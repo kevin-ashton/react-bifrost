@@ -7,6 +7,5 @@ export async function hello2(p: { name: string; age: number }): Promise<string> 
 }
 
 export async function hello3(p: { name: string; age: number }): Promise<string> {
-  await new Promise((r) => setTimeout(() => r(), 3000));
   return `Hello 3 ${p.name}. You are ${p.age} years old`;
 }
