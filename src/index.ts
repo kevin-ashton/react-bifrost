@@ -61,6 +61,8 @@ export function registerFunctionsWithExpress(p: {
 interface R1<ParamType, ResponseType> {
   useLocal: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
   useRemote: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
+  fetchLocal: (p: ParamType) => Promise<ResponseType>;
+  fetchRemote: (p: ParamType) => Promise<ResponseType>;
 }
 
 type HttpProcessor = (p: { fnName: string; payload: any }) => Promise<any>;
@@ -108,6 +110,35 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       }, memoizationArr);
 
       return ref.current;
+    },
+    fetchLocal: async (p: ParamType): Promise<ResponseType> => {
+      console.log('fetchLocal executed');
+      if (p1.logger) {
+        p1.logger({ fnName: p1.fnName, payload: p });
+      }
+      try {
+        let r = await p1.fn(p);
+        return r;
+      } catch (e) {
+        console.error(`Failed to fetchLocal for ${p1.fnName}`);
+        throw e;
+      }
+    },
+
+    fetchRemote: async (p: ParamType): Promise<ResponseType> => {
+      console.log('fetchRemote executed');
+      if (!p1.httpProcessor) {
+        throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
+      }
+      if (p1.logger) {
+        p1.logger({ fnName: p1.fnName, payload: p });
+      }
+      try {
+        return await p1.httpProcessor({ fnName: p1.fnName, payload: p });
+      } catch (e) {
+        console.error(`Failed to fetchRemote for ${p1.fnName}`);
+        throw e;
+      }
     },
     useRemote: (p: ParamType, memoizationArr?: any[]): { isLoading: boolean; error: Error; data: ResponseType } => {
       const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
