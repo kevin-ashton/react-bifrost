@@ -6,7 +6,10 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "watch": "tsc -w"
+    "watch": "run-p -l watch:*",
+    "watch:react-bifrost": "tsc -w",
+    "watch:acme-functions": "yarn --cwd example/acme-functions watch",
+    "watch:acme-server": "yarn --cwd example/acme-server watch"
   },
   "repository": {
     "type": "git",

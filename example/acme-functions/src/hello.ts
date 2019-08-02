@@ -1,4 +1,16 @@
-export async function hello1(p: { name: string }): Promise<string> {
+export async function hello1(p: { name: string; age: number }, req?: any): Promise<string> {
+  if (req) {
+    console.log('Means we are on the server');
+    console.log(req.body);
+    console.log(req.headers);
+
+    // Example of setting a custom status code
+    throw {
+      statusCode: 401,
+      error: new Error('Need access')
+    };
+  }
+
   return `Hello 1 ${p.name}!!!`;
 }
 

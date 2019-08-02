@@ -26,7 +26,7 @@ const App: React.FC = () => {
 };
 
 function Comp1() {
-  const { isLoading, data, error } = hooks.hello3.useRemote({ name: 'Kevin', age: 35 });
+  const { isLoading, data, error } = hooks.hello2.useRemote({ name: 'Kevin', age: 35 });
 
   if (isLoading) {
     return <div>Loading</div>;

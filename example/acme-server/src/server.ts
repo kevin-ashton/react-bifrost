@@ -2,7 +2,7 @@ import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as cors from 'cors';
 import { functions } from 'acme-functions';
-import { registerFunctionsWithExpress } from 'react-bifrost'
+import { registerFunctionsWithExpress } from 'react-bifrost';
 
 async function main() {
   const app = createServer();
@@ -32,9 +32,15 @@ function createServer(): express.Express {
   app.use(cors(corsOptions));
   app.use(bodyParser.json());
 
-  registerFunctionsWithExpress({fns: functions, apiPrefix: '/api-functions', expressApp: app});
-
-
+  registerFunctionsWithExpress({
+    fns: functions,
+    apiPrefix: '/api-functions',
+    expressApp: app,
+    logger: (p) => {
+      console.log('Logger running...');
+      console.log(p.fnName);
+    }
+  });
 
   return app;
 }

@@ -1,5 +1,4 @@
 import * as express from 'express';
-import { loadavg } from 'os';
 
 type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
 type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : never;
@@ -7,18 +6,19 @@ type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
 
 export function createBifrostHooks<FunctionsType>(
   fns: FunctionsType,
-  reactModule: any, // NOTE: We use a peer dependency for react but since this code is meant to be executable on the server or client its a little strange to include react as part of your server build as well.
-  httpProcessor?: HttpProcessor
+  reactModule: any, // NOTE: We use a peer dependency for react but since this code is meant to be executable on the server or client its a little strange to include react as part of your server build as well. Hence we just inject the module.
+  httpProcessor?: HttpProcessor,
+  logger?: Logger
 ): FnHookSDKType<FunctionsType> {
   const localFnSDK = {} as FnHookSDKType<FunctionsType>;
 
   Object.keys(fns).forEach((fnName) => {
-    //@ts-ignore
     localFnSDK[fnName] = FnMethodsHelper<never, never>({
       fn: fns[fnName],
       fnName: fnName,
       httpProcessor: httpProcessor,
-      reactModule: reactModule
+      reactModule: reactModule,
+      logger: logger
     });
   });
 
@@ -29,6 +29,7 @@ export function registerFunctionsWithExpress(p: {
   fns: any;
   expressApp: express.Application;
   apiPrefix: string;
+  logger?: Logger;
 }) {
   Object.keys(p.fns).forEach((fnName) => {
     let refinedApiPath = p.apiPrefix
@@ -40,7 +41,10 @@ export function registerFunctionsWithExpress(p: {
     console.log(`Api path registered: ${apiPath}`);
     p.expressApp.post(apiPath, async (req: express.Request, res: express.Response) => {
       try {
-        console.log(req.body);
+        if (p.logger) {
+          p.logger({ fnName: fnName, payload: req.body });
+        }
+
         let r1 = await p.fns[fnName](req.body, req);
         res.json(r1);
       } catch (e) {
@@ -60,12 +64,14 @@ interface R1<ParamType, ResponseType> {
 }
 
 type HttpProcessor = (p: { fnName: string; payload: any }) => Promise<any>;
+type Logger = (p: { fnName: string; payload: any }) => any;
 
 function FnMethodsHelper<ParamType, ResponseType>(p1: {
   fn: any;
   fnName: string;
   reactModule: any;
   httpProcessor?: HttpProcessor;
+  logger?: Logger;
 }): R1<ParamType, ResponseType> {
   return {
     useLocal: (p: ParamType, memoizationArr?: any[]): { isLoading: boolean; error: Error; data: ResponseType } => {
@@ -79,6 +85,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       p1.reactModule.useEffect(() => {
         (async () => {
           console.log('useLocal executed');
+          if (p1.logger) {
+            p1.logger({ fnName: p1.fnName, payload: p });
+          }
           try {
             let r = await p1.fn(p);
             ref.current = {
@@ -113,6 +122,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         (async () => {
           if (!p1.httpProcessor) {
             throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
+          }
+          if (p1.logger) {
+            p1.logger({ fnName: p1.fnName, payload: p });
           }
           try {
             let r1 = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
