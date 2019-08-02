@@ -25,7 +25,11 @@ export function createBifrostHooks<FunctionsType>(
   return localFnSDK;
 }
 
-export function registerFunctionsWithExpress(p: { fns: any; expressApp: express.Application; apiPrefix: string }) {
+export function registerFunctionsWithExpress(p: {
+  fns: any;
+  expressApp: express.Application;
+  apiPrefix: string;
+}) {
   Object.keys(p.fns).forEach((fnName) => {
     let refinedApiPath = p.apiPrefix
       .split('/')
@@ -37,11 +41,14 @@ export function registerFunctionsWithExpress(p: { fns: any; expressApp: express.
     p.expressApp.post(apiPath, async (req: express.Request, res: express.Response) => {
       try {
         console.log(req.body);
-        let r1 = await p.fns[fnName](req.body);
+        let r1 = await p.fns[fnName](req.body, req);
         res.json(r1);
       } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: 'Error' });
+        if (e.statusCode && typeof e.statusCode === 'number' && e.error && e.error instanceof Error) {
+          return res.status(e.statusCode).json({ status: 'Error' });
+        } else {
+          return res.status(500).json({ error: 'Error' });
+        }
       }
     });
   });
