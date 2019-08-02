@@ -1,5 +1,1 @@
-import * as hello from './hello';
-
-export const functions = {
-  ...hello
-};
+export * from './hello';

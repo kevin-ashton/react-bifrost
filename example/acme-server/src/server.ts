@@ -1,7 +1,7 @@
 import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as cors from 'cors';
-import { functions } from 'acme-functions';
+import * as functions from 'acme-functions';
 import { registerFunctionsWithExpress } from 'react-bifrost';
 
 async function main() {
