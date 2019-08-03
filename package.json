@@ -15,9 +15,9 @@
     "type": "git",
     "url": "git+https://github.com/kevin-ashton/react-bifrost.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["react", "express"],
+  "author": "Kevin M Ashton",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/kevin-ashton/react-bifrost/issues"
   },
