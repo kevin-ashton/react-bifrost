@@ -5,6 +5,7 @@
     "declaration": true,
     "sourceMap": true,
     "esModuleInterop": true,
+    "declarationMap": true,
     "module": "commonjs",
     "outDir": "dist"
   },

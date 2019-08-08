@@ -4,6 +4,7 @@
     "target": "es2017",
     "declaration": true,
     "sourceMap": true,
+    "declarationMap": true,
     "module": "commonjs",
     "outDir": "dist"
   },
