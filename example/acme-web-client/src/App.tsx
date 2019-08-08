@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
-import { createBifrostHooks } from 'react-bifrost';
+import { createBifrost } from 'react-bifrost';
 import * as functions from 'acme-functions';
 import axios from 'axios';
 import './App.css';
 
-let hooks = createBifrostHooks<typeof functions>(functions, React, async ({ fnName, payload }) => {
+let bifrost = createBifrost<typeof functions>(functions, React, async ({ fnName, payload }) => {
   let r1 = await axios.post(`http://localhost:8080/api-functions/${fnName}`, payload, {
     headers: { Authorization: 'ExampleToken...' }
   });
@@ -25,11 +25,11 @@ const App: React.FC = () => {
 };
 
 function Comp1() {
-  const { isLoading, data, error } = hooks.hello3.useRemote({ age: 34, name: 'Kevin' });
+  const { isLoading, data, error } = bifrost.hello3.useRemote({ age: 34, name: 'Kevin' });
 
   useEffect(() => {
     (async () => {
-      let r = await hooks.hello2.fetchRemote({ name: 'Scott', age: 34 });
+      let r = await bifrost.hello2.fetchRemote({ name: 'Scott', age: 34 });
       console.log(r);
     })();
   }, []);

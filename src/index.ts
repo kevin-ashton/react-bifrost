@@ -1,16 +1,17 @@
 import * as express from 'express';
+import { isSerializable } from './misc';
 
 type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
 type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : never;
 type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
 
-export function createBifrostHooks<FunctionsType>(
+export function createBifrost<FunctionsType>(
   fns: FunctionsType,
   reactModule: any, // NOTE: We use a peer dependency for react but since this code is meant to be executable on the server or client its a little strange to include react as part of your server build as well. Hence we just inject the module.
   httpProcessor?: HttpProcessor,
   logger?: Logger
-): FnHookSDKType<FunctionsType> {
-  const localFnSDK = {} as FnHookSDKType<FunctionsType>;
+): FnSDKType<FunctionsType> {
+  const localFnSDK = {} as FnSDKType<FunctionsType>;
 
   Object.keys(fns).forEach((fnName) => {
     localFnSDK[fnName] = FnMethodsHelper<never, never>({
@@ -46,6 +47,11 @@ export function registerFunctionsWithExpress(p: {
         }
 
         let r1 = await p.fns[fnName](req.body, req);
+        if (!isSerializable(r1)) {
+          return res
+            .status(500)
+            .json({ status: 'Error: Return data cannot be passed over the wire. Must be a plain javascript object.' });
+        }
         res.json(r1);
       } catch (e) {
         if (e.statusCode && typeof e.statusCode === 'number' && e.error && e.error instanceof Error) {
@@ -181,6 +187,6 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   };
 }
 
-type FnHookSDKType<FunctionsType extends any> = {
+type FnSDKType<FunctionsType extends any> = {
   [K in keyof FunctionsType]: R1<ArgumentType<FunctionsType[K]>, UnpackPromise<ReturnType<FunctionsType[K]>>>;
 };
