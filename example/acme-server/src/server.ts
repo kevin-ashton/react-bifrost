@@ -36,6 +36,7 @@ function createServer(): express.Express {
     fns: functions,
     apiPrefix: '/api-functions',
     expressApp: app,
+    fnAuthKey: 'exampleAuthFn',
     logger: (p) => {
       console.log('Logger running...');
       console.log(p.fnName);

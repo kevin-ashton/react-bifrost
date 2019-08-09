@@ -7,8 +7,8 @@ type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : ne
 type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
 
 interface UseCacheFns {
-  getItem: (p: { key: string }) => Promise<string | undefined>;
-  setItem: (p: { key: string; valueStringified: string }) => Promise<void>;
+  getCachedFnResult: (p: { key: string }) => Promise<string | undefined>;
+  setCachedFnResult: (p: { key: string; value: any }) => Promise<void>;
 }
 
 export function createBifrost<FunctionsType>(p: {
@@ -37,24 +37,41 @@ export function createBifrost<FunctionsType>(p: {
 export function registerFunctionsWithExpress(p: {
   fns: any;
   expressApp: express.Application;
+  fnAuthKey: string; // Endpoints are only registered if they have a auth function attached.  This a) Allows different auth for different envs (admin vs web-client), b) prevents us from exposing an endpoint accidently
   apiPrefix: string;
   logger?: Logger;
 }) {
-  Object.keys(p.fns).forEach((fnName) => {
+  let fnNames = Object.keys(p.fns);
+
+  for (let i = 0; i < fnNames.length; i++) {
+    let fnName = fnNames[i];
     let refinedApiPath = p.apiPrefix
       .split('/')
       .filter((n) => n.length > 0)
       .join('/');
     let apiPath = `/${refinedApiPath}/${fnName}`;
 
-    console.log(`Api path registered: ${apiPath}`);
+    let hasAuthFn = typeof p.fns[fnName][p.fnAuthKey] === 'function';
+
+    if (!hasAuthFn) {
+      console.warn(
+        `Warning: No auth function specified for ${fnName}. Request to this function will be denied.  fnAuthKey: ${p.fnAuthKey}`
+      );
+    }
+
+    console.log(`Registering api path: ${apiPath}`);
     p.expressApp.post(apiPath, async (req: express.Request, res: express.Response) => {
       try {
         if (p.logger) {
           p.logger({ fnName: fnName, payload: req.body });
         }
 
-        let r1 = await p.fns[fnName](req.body, req);
+        if (!hasAuthFn) {
+          return res.status(401).json({ status: 'unauthorized', details: 'no fnAuthKey defined' });
+        }
+        await p.fns[fnName][p.fnAuthKey](req);
+
+        let r1 = await p.fns[fnName](req.body);
         if (!isSerializable(r1)) {
           return res
             .status(500)
@@ -65,11 +82,12 @@ export function registerFunctionsWithExpress(p: {
         if (e.statusCode && typeof e.statusCode === 'number' && e.error && e.error instanceof Error) {
           return res.status(e.statusCode).json({ status: 'Error' });
         } else {
+          console.log(e);
           return res.status(500).json({ error: 'Error' });
         }
       }
     });
-  });
+  }
 }
 
 interface R1<ParamType, ResponseType> {
@@ -104,10 +122,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         (async () => {
           let cacheKey = `local-${p1.fnName}-${md5(JSON.stringify(p))}`;
           if (p1.useCacheFns) {
-            let cacheData = await p1.useCacheFns.getItem({ key: cacheKey });
+            let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
               console.log(`Found in cache: ${cacheKey}`);
-              ref.current = { data: JSON.parse(cacheData), isLoading: false, error: null };
+              ref.current = { data: cacheData, isLoading: false, error: null };
             } else {
               console.log(`Not found in cache: ${cacheKey}`);
             }
@@ -121,7 +139,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             // Cache for the local useFunction
             if (p1.useCacheFns) {
-              await p1.useCacheFns.setItem({ key: cacheKey, valueStringified: JSON.stringify(r) });
+              await p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: JSON.stringify(r) });
             }
 
             ref.current = {
@@ -188,7 +206,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           }
           let cacheKey = `remote-${p1.fnName}-${md5(JSON.stringify(p))}`;
           if (p1.useCacheFns) {
-            let cacheData = await p1.useCacheFns.getItem({ key: cacheKey });
+            let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
               console.log(`Found in cache: ${cacheKey}`);
               ref.current = { data: JSON.parse(cacheData), isLoading: false, error: null };
@@ -205,7 +223,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             // Cache for the local useFunction
             if (p1.useCacheFns) {
-              await p1.useCacheFns.setItem({ key: cacheKey, valueStringified: JSON.stringify(r1) });
+              await p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: JSON.stringify(r1) });
             }
 
             ref.current = {

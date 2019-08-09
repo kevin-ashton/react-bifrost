@@ -16,9 +16,9 @@ let bifrost = createBifrost<typeof functions>({
     return r1.data;
   },
   useCacheFns: {
-    getItem: async (p) => exampleCache[p.key] || undefined,
-    setItem: async (p) => {
-      exampleCache[p.key] = p.valueStringified;
+    getCachedFnResult: async (p) => exampleCache[p.key] || undefined,
+    setCachedFnResult: async (p) => {
+      exampleCache[p.key] = p.value;
     }
   }
 });
