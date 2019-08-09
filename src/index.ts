@@ -1,25 +1,33 @@
 import * as express from 'express';
 import { isSerializable } from './misc';
+import md5 from 'md5';
 
 type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
 type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : never;
 type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
 
-export function createBifrost<FunctionsType>(
-  fns: FunctionsType,
-  reactModule: any, // NOTE: We use a peer dependency for react but since this code is meant to be executable on the server or client its a little strange to include react as part of your server build as well. Hence we just inject the module.
-  httpProcessor?: HttpProcessor,
-  logger?: Logger
-): FnSDKType<FunctionsType> {
+interface UseCacheFns {
+  getItem: (p: { key: string }) => Promise<string | undefined>;
+  setItem: (p: { key: string; valueStringified: string }) => Promise<void>;
+}
+
+export function createBifrost<FunctionsType>(p: {
+  fns: FunctionsType;
+  reactModule: any; // NOTE: We use a peer dependency for react but since this code is meant to be executable on the server or client its a little strange to include react as part of your server build as well. Hence we just inject the module.
+  useCacheFns?: UseCacheFns;
+  httpProcessor?: HttpProcessor;
+  logger?: Logger;
+}): FnSDKType<FunctionsType> {
   const localFnSDK = {} as FnSDKType<FunctionsType>;
 
-  Object.keys(fns).forEach((fnName) => {
+  Object.keys(p.fns).forEach((fnName) => {
     localFnSDK[fnName] = FnMethodsHelper<never, never>({
-      fn: fns[fnName],
+      fn: p.fns[fnName],
       fnName: fnName,
-      httpProcessor: httpProcessor,
-      reactModule: reactModule,
-      logger: logger
+      useCacheFns: p.useCacheFns,
+      httpProcessor: p.httpProcessor,
+      reactModule: p.reactModule,
+      logger: p.logger
     });
   });
 
@@ -78,11 +86,12 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   fn: any;
   fnName: string;
   reactModule: any;
-  httpProcessor?: HttpProcessor;
-  logger?: Logger;
+  useCacheFns: UseCacheFns | undefined;
+  httpProcessor: HttpProcessor | undefined;
+  logger: Logger | undefined;
 }): R1<ParamType, ResponseType> {
   return {
-    useLocal: (p: ParamType, memoizationArr?: any[]): { isLoading: boolean; error: Error; data: ResponseType } => {
+    useLocal: (p: ParamType, memoizationArr: any[] = []): { isLoading: boolean; error: Error; data: ResponseType } => {
       const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -91,13 +100,30 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       });
 
       p1.reactModule.useEffect(() => {
+        console.log(`Run useLocal for ${p1.fnName}`);
         (async () => {
-          console.log('useLocal executed');
+          let cacheKey = `local-${p1.fnName}-${md5(JSON.stringify(p))}`;
+          if (p1.useCacheFns) {
+            let cacheData = await p1.useCacheFns.getItem({ key: cacheKey });
+            if (cacheData) {
+              console.log(`Found in cache: ${cacheKey}`);
+              ref.current = { data: JSON.parse(cacheData), isLoading: false, error: null };
+            } else {
+              console.log(`Not found in cache: ${cacheKey}`);
+            }
+          }
+
           if (p1.logger) {
             p1.logger({ fnName: p1.fnName, payload: p });
           }
           try {
             let r = await p1.fn(p);
+
+            // Cache for the local useFunction
+            if (p1.useCacheFns) {
+              await p1.useCacheFns.setItem({ key: cacheKey, valueStringified: JSON.stringify(r) });
+            }
+
             ref.current = {
               data: r,
               isLoading: false,
@@ -118,7 +144,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       return ref.current;
     },
     fetchLocal: async (p: ParamType): Promise<ResponseType> => {
-      console.log('fetchLocal executed');
+      console.log(`Run fetchLocal for ${p1.fnName}`);
       if (p1.logger) {
         p1.logger({ fnName: p1.fnName, payload: p });
       }
@@ -132,7 +158,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
     },
 
     fetchRemote: async (p: ParamType): Promise<ResponseType> => {
-      console.log('fetchRemote executed');
+      console.log(`Run fetchRemote for ${p1.fnName}`);
       if (!p1.httpProcessor) {
         throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
       }
@@ -146,7 +172,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         throw e;
       }
     },
-    useRemote: (p: ParamType, memoizationArr?: any[]): { isLoading: boolean; error: Error; data: ResponseType } => {
+    useRemote: (p: ParamType, memoizationArr: any[] = []): { isLoading: boolean; error: Error; data: ResponseType } => {
       const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -155,16 +181,33 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       });
 
       p1.reactModule.useEffect(() => {
-        console.log('useRemote executed');
+        console.log(`Run useRemote for ${p1.fnName}`);
         (async () => {
           if (!p1.httpProcessor) {
             throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
           }
+          let cacheKey = `remote-${p1.fnName}-${md5(JSON.stringify(p))}`;
+          if (p1.useCacheFns) {
+            let cacheData = await p1.useCacheFns.getItem({ key: cacheKey });
+            if (cacheData) {
+              console.log(`Found in cache: ${cacheKey}`);
+              ref.current = { data: JSON.parse(cacheData), isLoading: false, error: null };
+            } else {
+              console.log(`Not found in cache: ${cacheKey}`);
+            }
+          }
+
           if (p1.logger) {
             p1.logger({ fnName: p1.fnName, payload: p });
           }
           try {
             let r1 = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
+
+            // Cache for the local useFunction
+            if (p1.useCacheFns) {
+              await p1.useCacheFns.setItem({ key: cacheKey, valueStringified: JSON.stringify(r1) });
+            }
+
             ref.current = {
               data: r1,
               isLoading: false,
@@ -180,7 +223,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             setTriggerRender(triggerRender + 1);
           }
         })();
-      }, [memoizationArr]);
+      }, memoizationArr);
 
       return ref.current;
     }
