@@ -1,3 +1,5 @@
+import { BehaviorSubject } from 'rxjs';
+
 export async function hello1(p: { name: string; age: number }, req?: any): Promise<string> {
   if (req) {
     console.log('Means we are on the server');
@@ -32,3 +34,14 @@ export async function helloDelayed(p: { name: string; age: number }): Promise<st
   return `Hello delayed ${p.name}. You are ${p.age} years old. ${Math.random()}`;
 }
 helloDelayed.exampleAuthFn = () => console.log('Auth looks good');
+
+let sharedObs = new BehaviorSubject(Math.random());
+
+setInterval(() => {
+  sharedObs.next(Math.random());
+}, 3000);
+
+export async function helloSub(p: { name: string; age: number }): Promise<BehaviorSubject<number>> {
+  return sharedObs;
+}
+helloSub.exampleAuthFn = () => console.log('Auth looks good');

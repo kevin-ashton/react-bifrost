@@ -26,11 +26,23 @@ let bifrost = createBifrost<typeof functions>({
 const App: React.FC = () => {
   const [showComp1, setShowComp1] = useState(true);
 
+  const [subExampleData, setSubExampleData] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      let r1 = await bifrost.helloSub.fetchLocal({ name: 'Matt', age: 10 });
+      r1.subscribe((value) => {
+        setSubExampleData(value);
+      });
+    })();
+  }, []);
+
   return (
     <div className="App">
       <header className="App-header">
         {showComp1 ? <Comp1 /> : null}
         <p onClick={() => setShowComp1(!showComp1)}>Toggle Comp 1</p>
+        <div>Subscription: {subExampleData}</div>
       </header>
     </div>
   );
@@ -47,13 +59,6 @@ function Comp1() {
     return () => {
       console.log('Comp1 unmount');
     };
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      // let r = await bifrost.hello2.fetchRemote({ name: 'Scott', age: 34 });
-      // console.log(r);
-    })();
   }, []);
 
   if (r1.isLoading || r2.isLoading) {
