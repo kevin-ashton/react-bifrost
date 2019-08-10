@@ -44,4 +44,41 @@ setInterval(() => {
 export async function helloSub(p: { name: string; age: number }): Promise<BehaviorSubject<number>> {
   return sharedObs;
 }
-helloSub.exampleAuthFn = () => console.log('Auth looks good');
+//
+// helloSub.exampleAuthFn = () => console.log('Auth looks good');
+//
+// export async function helloSub2(p: { userId: string}){
+//
+//   const bs = new BehaviorSubject(undefined);
+//
+//   let s1, s2;
+//
+//   s1 = firebaseSubService(constants.queryOfUserTeams).subscribe(currentTeams => {
+//     s2 = firebaseSubService({
+//       collection: 'users',
+//       where: [...currentTeams]
+//     }).subscribe(calendarEntries => {
+//       bs.next(calendarEntries)
+//     })
+//   });
+//
+//   return bs
+//
+//
+//
+//
+//     return {
+//       bs,
+//       unsubscribe: () => {
+//         s1.su
+//       }
+//     }
+//
+// }
+//
+//
+//
+// const { data, error, isLoading } = useFn.getItemSub({ id: 'foo1'});
+// const { data, error, isLoading } = useFn.hello2();
+//
+// helloDelayed()
