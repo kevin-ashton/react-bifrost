@@ -28,19 +28,19 @@ const App: React.FC = () => {
 
   const [subExampleData, setSubExampleData] = useState(0);
 
-  // useEffect(() => {
-  //   (async () => {
-  //     let r1 = await bifrost.helloSub.fetchLocal({ name: 'Matt', age: 10 });
-  //
-  //     let unsub = r1.subscribe((value) => {
-  //       setSubExampleData(value);
-  //     });
-  //
-  //     return () => {
-  //       unsub.unsubscribe();
-  //     };
-  //   })();
-  // }, []);
+  useEffect(() => {
+    (async () => {
+      let r1 = await bifrost.helloSub.fetchLocal({ name: 'Matt', age: 10 });
+
+      let unsub = r1.subscribe((value) => {
+        setSubExampleData(value);
+      });
+
+      return () => {
+        unsub.unsubscribe();
+      };
+    })();
+  }, []);
 
   return (
     <div className="App">
