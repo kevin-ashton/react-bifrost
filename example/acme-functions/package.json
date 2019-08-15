@@ -13,6 +13,9 @@
   "license": "ISC",
   "dependencies": {
     "firebase": "^6.3.4",
+    "firestore": "^1.1.6",
+    "firestore-lift": "^2.0.7",
+    "react-bifrost": "file:../..",
     "rxjs": "^6.5.2",
     "typescript": "^3.5.3"
   }

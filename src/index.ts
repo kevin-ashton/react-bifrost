@@ -11,17 +11,22 @@ interface UseCacheFns {
   setCachedFnResult: (p: { key: string; value: any }) => Promise<void>;
 }
 
-export function createBifrost<FunctionsType>(p: {
+export type BifrostSub<T> = { subscribe: (a: T) => () => void };
+export type UnpackBifrostSub<T> = T extends BifrostSub<infer U> ? U : T;
+
+export function createBifrost<FunctionsType extends Record<string, Function>>(p: {
   fns: FunctionsType;
   reactModule: any; // NOTE: We use a peer dependency for react but since this code is meant to be executable on the server or client its a little strange to include react as part of your server build as well. Hence we just inject the module.
   useCacheFns?: UseCacheFns;
   httpProcessor?: HttpProcessor;
   logger?: Logger;
-}): FnSDKType<FunctionsType> {
-  const localFnSDK = {} as FnSDKType<FunctionsType>;
+}): BifrostInstance<FunctionsType> {
+  const localFnSDK = {} as BifrostInstance<FunctionsType>;
+
+  type b = typeof localFnSDK;
 
   Object.keys(p.fns).forEach((fnName) => {
-    localFnSDK[fnName] = FnMethodsHelper<never, never>({
+    localFnSDK[fnName as keyof FunctionsType] = FnMethodsHelper<never, never>({
       fn: p.fns[fnName],
       fnName: fnName,
       useCacheFns: p.useCacheFns,
@@ -90,8 +95,12 @@ export function registerFunctionsWithExpress(p: {
   }
 }
 
-interface R1<ParamType, ResponseType> {
+interface BifrostInstanceFn<ParamType, ResponseType> {
   useLocal: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
+  useLocalSub: (
+    p: ParamType,
+    memoizationArr?: any[]
+  ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType> };
   useRemote: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
   fetchLocal: (p: ParamType) => Promise<ResponseType>;
   fetchRemote: (p: ParamType) => Promise<ResponseType>;
@@ -107,9 +116,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   useCacheFns: UseCacheFns | undefined;
   httpProcessor: HttpProcessor | undefined;
   logger: Logger | undefined;
-}): R1<ParamType, ResponseType> {
+}): BifrostInstanceFn<ParamType, ResponseType> {
   return {
-    useLocal: (p: ParamType, memoizationArr: any[] = []): { isLoading: boolean; error: Error; data: ResponseType } => {
+    useLocal: (p: ParamType, memoizationArr: any[] = []) => {
       const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -161,7 +170,82 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       return ref.current;
     },
-    fetchLocal: async (p: ParamType): Promise<ResponseType> => {
+    useLocalSub: (p: ParamType, memoizationArr: any[] = []) => {
+      const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
+      const [unsubscribeFn, setUnsubscribeFn] = p1.reactModule.useState(false);
+      const ref = p1.reactModule.useRef({
+        data: null,
+        isLoading: true,
+        error: null
+      });
+
+      p1.reactModule.useEffect(() => {
+        console.log(`Run useLocalSub for ${p1.fnName}`);
+        (async () => {
+          try {
+            let r = await p1.fn(p);
+            if (!r.subscribe || typeof r.subscribe !== 'function') {
+              console.error(r);
+              throw new Error(
+                'To use useLocalSub the calling function must return an object that has a subscribe function'
+              );
+            }
+            let cacheKey = `localSub-${p1.fnName}-${md5(JSON.stringify(p))}`;
+            if (p1.useCacheFns) {
+              let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
+              if (cacheData) {
+                console.log(`Found in cache: ${cacheKey}`);
+                ref.current = { data: cacheData, isLoading: false, error: null };
+              } else {
+                console.log(`Not found in cache: ${cacheKey}`);
+              }
+            }
+
+            if (p1.logger) {
+              p1.logger({ fnName: p1.fnName, payload: p });
+            }
+            console.log('Subscribe started for useLocalSub');
+            let r2 = r.subscribe((val) => {
+              ref.current = {
+                data: val,
+                isLoading: false,
+                error: null
+              };
+              setTriggerRender(triggerRender + 1);
+            });
+
+            if (!r2.unsubscribe || typeof r.unsubscribe !== 'function') {
+              console.error(r2);
+              throw new Error(
+                'To use useLocalSub the calling function must return an object that has a subscribe function, which in returns an object with unsubscribe'
+              );
+            }
+
+            setUnsubscribeFn(r2.unsubscribe);
+          } catch (e) {
+            ref.current = {
+              data: undefined,
+              isLoading: false,
+              error: e
+            };
+          }
+          if (unsubscribeFn) {
+            console.log('Unsubscribe from previous subscription');
+            unsubscribeFn();
+          }
+        })();
+
+        // Does this reference the latest fn?
+        return () => {
+          if (unsubscribeFn) {
+            unsubscribeFn();
+          }
+        };
+      }, memoizationArr);
+
+      return ref.current;
+    },
+    fetchLocal: async (p: ParamType) => {
       console.log(`Run fetchLocal for ${p1.fnName}`);
       if (p1.logger) {
         p1.logger({ fnName: p1.fnName, payload: p });
@@ -174,8 +258,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         throw e;
       }
     },
-
-    fetchRemote: async (p: ParamType): Promise<ResponseType> => {
+    fetchRemote: async (p: ParamType) => {
       console.log(`Run fetchRemote for ${p1.fnName}`);
       if (!p1.httpProcessor) {
         throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
@@ -190,7 +273,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         throw e;
       }
     },
-    useRemote: (p: ParamType, memoizationArr: any[] = []): { isLoading: boolean; error: Error; data: ResponseType } => {
+    useRemote: (p: ParamType, memoizationArr: any[] = []) => {
       const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -248,6 +331,26 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   };
 }
 
-type FnSDKType<FunctionsType extends any> = {
-  [K in keyof FunctionsType]: R1<ArgumentType<FunctionsType[K]>, UnpackPromise<ReturnType<FunctionsType[K]>>>;
+type BifrostInstance<FunctionsType extends Record<string, Function>> = {
+  [K in keyof FunctionsType]: BifrostInstanceFn<
+    ArgumentType<FunctionsType[K]>,
+    UnpackPromise<ReturnType<FunctionsType[K]>>
+  >;
 };
+
+const functions = {
+  blah() {
+    const a: BifrostSub<{ blah: string }> = {
+      subscribe: () => null
+    };
+
+    return a;
+  }
+};
+
+let bifrost = createBifrost<typeof functions>({
+  fns: functions,
+  reactModule: () => {}
+});
+
+const a = bifrost.blah.useLocalSub({});
