@@ -5,10 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "watch": "run-p watch:*",
-    "watch:react-bifrost": "yarn --cwd module tsc -w",
-    "watch:acme-functions": "yarn --cwd example/acme-functions watch",
-    "watch:acme-server": "yarn --cwd example/acme-server watch"
+    "build": "tsc",
+    "watch": "tsc -w"
   },
   "repository": {
     "type": "git",
@@ -25,7 +23,12 @@
   },
   "homepage": "https://github.com/kevin-ashton/react-bifrost#readme",
   "dependencies": {
-    "npm-run-all": "^4.1.5",
-    "prettier": "^1.18.2"
+    "@types/express": "^4.17.0",
+    "@types/node": "^12.6.9",
+    "emittery": "^0.4.1",
+    "express": "^4.17.1",
+    "lodash": "^4.17.15",
+    "md5": "^2.2.1",
+    "typescript": "^3.5.3"
   }
 }

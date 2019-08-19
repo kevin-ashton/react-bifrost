@@ -1,6 +1,7 @@
+import Emittery from 'emittery';
 import * as express from 'express';
-import { isSerializable } from './misc';
 import md5 from 'md5';
+import { isSerializable } from './misc';
 
 type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
 type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : never;
@@ -11,7 +12,52 @@ interface UseCacheFns {
   setCachedFnResult: (p: { key: string; value: any }) => Promise<void>;
 }
 
-export type BifrostSub<T> = { subscribe: (a: T) => () => void };
+type SubProps<T> = {
+  dispose: () => void;
+  onData: (fn: (a: T) => void) => void;
+  onError: (fn: (a: Error) => void) => void;
+  nextData: (a: T) => void;
+  nextError: (e: Error) => void;
+};
+export class BifrostSub<T> {
+  public dispose: () => void;
+  public onData: (fn: (a: T) => void) => void;
+  public onError: (fn: (a: Error) => void) => void;
+  public nextData: (a: T) => void;
+  public nextError: (e: Error) => void;
+
+  constructor(p: SubProps<T>) {
+    this.dispose = p.dispose;
+    this.onData = p.onData;
+    this.onError = p.onError;
+    this.nextData = p.nextData;
+    this.nextError = p.nextError;
+  }
+}
+
+export function createBifrostSub<T>(a: { dispose: () => void }): BifrostSub<T> {
+  const ee = new Emittery();
+
+  return new BifrostSub({
+    dispose: () => {
+      ee.clearListeners();
+      a.dispose();
+    },
+    onData: (fn: (a: T) => void) => {
+      ee.on('data', fn);
+    },
+    onError: (fn: (e: Error) => void) => {
+      ee.on('error', fn);
+    },
+    nextData: (a: T) => {
+      ee.emit('data', a);
+    },
+    nextError: (e: Error) => {
+      ee.emit('error', e);
+    }
+  });
+}
+
 export type UnpackBifrostSub<T> = T extends BifrostSub<infer U> ? U : T;
 
 export function createBifrost<FunctionsType extends Record<string, Function>>(p: {
@@ -22,8 +68,6 @@ export function createBifrost<FunctionsType extends Record<string, Function>>(p:
   logger?: Logger;
 }): BifrostInstance<FunctionsType> {
   const localFnSDK = {} as BifrostInstance<FunctionsType>;
-
-  type b = typeof localFnSDK;
 
   Object.keys(p.fns).forEach((fnName) => {
     localFnSDK[fnName as keyof FunctionsType] = FnMethodsHelper<never, never>({
@@ -99,7 +143,7 @@ interface BifrostInstanceFn<ParamType, ResponseType> {
   useLocal: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
   useLocalSub: (
     p: ParamType,
-    memoizationArr?: any[]
+    memoizationArr: any[]
   ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType> };
   useRemote: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
   fetchLocal: (p: ParamType) => Promise<ResponseType>;
@@ -107,7 +151,7 @@ interface BifrostInstanceFn<ParamType, ResponseType> {
 }
 
 type HttpProcessor = (p: { fnName: string; payload: any }) => Promise<any>;
-type Logger = (p: { fnName: string; payload: any }) => any;
+type Logger = (p: { fnName: string; payload: any; error?: Error }) => any;
 
 function FnMethodsHelper<ParamType, ResponseType>(p1: {
   fn: any;
@@ -119,7 +163,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 }): BifrostInstanceFn<ParamType, ResponseType> {
   return {
     useLocal: (p: ParamType, memoizationArr: any[] = []) => {
-      const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
+      const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
         isLoading: true,
@@ -143,6 +187,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (p1.logger) {
             p1.logger({ fnName: p1.fnName, payload: p });
           }
+
           try {
             let r = await p1.fn(p);
 
@@ -163,7 +208,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               error: e
             };
           } finally {
-            setTriggerRender(triggerRender + 1);
+            setTriggerRender((a) => !a);
           }
         })();
       }, memoizationArr);
@@ -171,8 +216,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       return ref.current;
     },
     useLocalSub: (p: ParamType, memoizationArr: any[] = []) => {
-      const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
-      const [unsubscribeFn, setUnsubscribeFn] = p1.reactModule.useState(false);
+      const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
         isLoading: true,
@@ -181,47 +225,55 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       p1.reactModule.useEffect(() => {
         console.log(`Run useLocalSub for ${p1.fnName}`);
+        let unsub: any;
         (async () => {
           try {
-            let r = await p1.fn(p);
-            if (!r.subscribe || typeof r.subscribe !== 'function') {
-              console.error(r);
-              throw new Error(
-                'To use useLocalSub the calling function must return an object that has a subscribe function'
-              );
+            let sub = await p1.fn(p);
+
+            if (!(sub instanceof BifrostSub)) {
+              throw new Error('useLocalSub may only be called on functions that return a BifrostSub');
             }
+
+            if (p1.logger) {
+              p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Initializing useLocalSub' } });
+            }
+
             let cacheKey = `localSub-${p1.fnName}-${md5(JSON.stringify(p))}`;
             if (p1.useCacheFns) {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
                 console.log(`Found in cache: ${cacheKey}`);
                 ref.current = { data: cacheData, isLoading: false, error: null };
+                if (p1.logger) {
+                  p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Got cached data' } });
+                }
               } else {
                 console.log(`Not found in cache: ${cacheKey}`);
               }
             }
 
-            if (p1.logger) {
-              p1.logger({ fnName: p1.fnName, payload: p });
-            }
-            console.log('Subscribe started for useLocalSub');
-            let r2 = r.subscribe((val) => {
+            sub.onData((val) => {
+              if (p1.logger) {
+                p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Got new data from server' } });
+              }
               ref.current = {
                 data: val,
                 isLoading: false,
                 error: null
               };
-              setTriggerRender(triggerRender + 1);
+              setTriggerRender((s) => !s);
             });
 
-            if (!r2.unsubscribe || typeof r.unsubscribe !== 'function') {
-              console.error(r2);
-              throw new Error(
-                'To use useLocalSub the calling function must return an object that has a subscribe function, which in returns an object with unsubscribe'
-              );
-            }
+            sub.onError((err) => {
+              if (p1.logger) {
+                p1.logger({
+                  fnName: p1.fnName,
+                  payload: { parameters: p, error: err, description: 'Error in subscription stream' }
+                });
+              }
+            });
 
-            setUnsubscribeFn(r2.unsubscribe);
+            unsub = sub.dispose;
           } catch (e) {
             ref.current = {
               data: undefined,
@@ -229,18 +281,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               error: e
             };
           }
-          if (unsubscribeFn) {
-            console.log('Unsubscribe from previous subscription');
-            unsubscribeFn();
-          }
         })();
 
-        // Does this reference the latest fn?
-        return () => {
-          if (unsubscribeFn) {
-            unsubscribeFn();
-          }
-        };
+        return unsub;
       }, memoizationArr);
 
       return ref.current;
@@ -274,7 +317,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       }
     },
     useRemote: (p: ParamType, memoizationArr: any[] = []) => {
-      const [triggerRender, setTriggerRender] = p1.reactModule.useState(0);
+      const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
         isLoading: true,
@@ -321,7 +364,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               error: e
             };
           } finally {
-            setTriggerRender(triggerRender + 1);
+            setTriggerRender((a) => !a);
           }
         })();
       }, memoizationArr);
@@ -337,20 +380,3 @@ type BifrostInstance<FunctionsType extends Record<string, Function>> = {
     UnpackPromise<ReturnType<FunctionsType[K]>>
   >;
 };
-
-const functions = {
-  blah() {
-    const a: BifrostSub<{ blah: string }> = {
-      subscribe: () => null
-    };
-
-    return a;
-  }
-};
-
-let bifrost = createBifrost<typeof functions>({
-  fns: functions,
-  reactModule: () => {}
-});
-
-const a = bifrost.blah.useLocalSub({});

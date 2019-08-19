@@ -1,8 +1,8 @@
 import * as express from 'express';
 import * as bodyParser from 'body-parser';
 import * as cors from 'cors';
-import * as functions from 'acme-functions';
-import { registerFunctionsWithExpress } from 'react-bifrost';
+import * as functions from '../../acme-functions';
+import { registerFunctionsWithExpress } from '../../../module';
 
 async function main() {
   const app = createServer();

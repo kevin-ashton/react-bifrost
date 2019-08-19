@@ -4,7 +4,7 @@ import * as functions from 'acme-functions';
 import axios from 'axios';
 import './App.css';
 
-let exampleCache: BifrostInstance = {};
+let exampleCache: Record<string, any> = {};
 
 let bifrost = createBifrost<typeof functions>({
   fns: functions,
@@ -23,57 +23,26 @@ let bifrost = createBifrost<typeof functions>({
   }
 });
 
-
-
 const App: React.FC = () => {
-  const a = bifrost.helloAutoSub.BifrostInstanceFn({name: 'asdf'})
-
-  a.data.subscribe
-
-  const b = typeof a.data
-
-
-
   const [showComp1, setShowComp1] = useState(true);
-
-  const [subExampleData, setSubExampleData] = useState(0);
-
-  useEffect(() => {
-    (async () => {
-      let r1 = await bifrost.helloSub.fetchLocal({ name: 'Matt', age: 10 });
-
-      let unsub = r1.subscribe((value) => {
-        setSubExampleData(value);
-      });
-
-      return () => {
-        unsub.unsubscribe();
-      };
-    })();
-  }, []);
-
   return (
     <div className="App">
       <header className="App-header">
         {showComp1 ? <Comp1 /> : null}
         <p onClick={() => setShowComp1(!showComp1)}>Toggle Comp 1</p>
-        <div>Manual Subscription: {subExampleData}</div>
       </header>
     </div>
   );
 };
 
 function Comp1() {
-  const r1 = bifrost.hello2.FnSDKTypeMember({ age: 34, name: 'Kevin' });
+  const r1 = bifrost.hello2.useLocal({ age: 34, name: 'Kevin' });
 
-  const r2 = bifrost.helloDelayed.FnSDKTypeMember({ age: 10, name: 'Bob' });
+  const r2 = bifrost.helloDelayed.useLocal({ age: 10, name: 'Bob' });
 
-  const r3 = bifrost.helloAutoSub.useLocalSub({name: 'Kevin'});
+  const r3 = bifrost.helloPub.useLocalSub({ name: 'Kevin', age: 34 }, []);
 
-  r3.data
-
-  const a = typeof r3.data
-
+  console.log('render...')
 
 
   useEffect(() => {
@@ -84,14 +53,14 @@ function Comp1() {
     };
   }, []);
 
-  if (r1.isLoading || r2.isLoading) {
+  if (r1.isLoading || r2.isLoading || r3.isLoading) {
     return <div>Loading</div>;
   }
 
   return (
     <div>
-      <h1>{r1.data}</h1>
-      <h1>{r2.data}</h1>
+      {/* <h1>{r1.data}</h1> */}
+      {/* <h1>{r2.data}</h1> */}
       <h1>Auto {JSON.stringify(r3.data)}</h1>
     </div>
   );

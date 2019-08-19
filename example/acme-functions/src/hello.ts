@@ -1,15 +1,7 @@
-import { BehaviorSubject } from 'rxjs';
-import { BifrostSub } from 'react-bifrost';
+import { createBifrostSub, BifrostSub } from 'react-bifrost';
 import { dummyData, Person } from './temp';
-import {
-  FirestoreLift,
-  BatchRunner,
-  FirestoreLiftSubscription,
-  UnpackFirestoreLiftSubscription,
-  BatchTask
-} from 'firestore-lift';
+import { FirestoreLift, BatchRunner, BatchTask } from 'firestore-lift';
 import * as firebase from 'firebase';
-import { Request } from 'express';
 
 console.log('Init test');
 
@@ -35,20 +27,20 @@ let personHelper = new FirestoreLift<Person>({
   prefixIdWithCollection: true
 });
 
-const a = personHelper.query({}).then((a) => a.items);
-
 async function init() {
   console.log('-------------------------------------------------------------');
   console.log('Run init');
   console.log('-------------------------------------------------------------');
   try {
     let r1 = await firebase.auth().signInWithEmailAndPassword('test@example.com', '2522blacky');
+    console.log('User logged in');
     await resetData();
   } catch (e) {
     console.log(e);
   }
 }
 init();
+
 async function resetData() {
   console.log('Reset data');
   let batchTasks: BatchTask[] = [];
@@ -65,18 +57,7 @@ async function resetData() {
   }
 }
 
-export async function hello1(p: { name: string; age: number }, req?: Request): Promise<string> {
-  if (req) {
-    console.log('Means we are on the server');
-    console.log(req.body);
-    console.log(req.headers);
-
-    // Example of setting a custom status code
-    throw {
-      statusCode: 401,
-      error: new Error('Need access')
-    };
-  }
+export async function hello1(p: { name: string; age: number }): Promise<string> {
   return `Hello 1 ${p.name}!!!`;
 }
 hello1.exampleAuthFn = (req) => {
@@ -100,43 +81,32 @@ export async function helloDelayed(p: { name: string; age: number }): Promise<st
 }
 helloDelayed.exampleAuthFn = () => console.log('Auth looks good');
 
-let sharedObs = new BehaviorSubject(Math.random());
-
-setInterval(() => {
-  sharedObs.next(Math.random());
-}, 3000);
-
-export async function helloSub(p: { name: string; age: number }): Promise<BehaviorSubject<number>> {
-  return sharedObs;
+interface HelloPubRtn {
+  person: Person;
 }
 
-let registeredFns = [];
-setInterval(() => {
-  registeredFns.forEach((fn) => {
-    fn({ coolNumber: Math.random() });
-  });
-}, 2000);
+export async function helloPub(p: { name: string; age: number }): Promise<BifrostSub<HelloPubRtn>> {
+  let disposeFns = [];
 
-export async function helloAutoSub({ name: string }) {
-  let r1 = await personHelper.querySubscription({});
-
-  const a = {
-    subscribe: (c: Person) => {
-      return () => {};
+  let instance = createBifrostSub<HelloPubRtn>({
+    dispose: () => {
+      disposeFns.forEach((fn) => fn());
     }
-  };
+  });
 
-  return a;
+  let inter = setInterval(() => {
+    console.log('Interval executed!');
+    instance.nextData({
+      person: {
+        age: Math.random(),
+        favFoods: { american: 'blah', asian: 'df', italian: 'fd' },
+        name: 'Kevin',
+        weight: 150
+      }
+    });
+  }, 1000);
 
-  // return {
-  //   subscribe: (subFn) => {
-  //     registeredFns.push(subFn);
-  //     return {
-  //       unsubscribe: () => {
-  //         console.log('Remove fn from registeredList');
-  //         registeredFns.splice(registeredFns.indexOf(subFn), 1);
-  //       }
-  //     };
-  //   }
-  // };
+  disposeFns.push(() => clearInterval(inter));
+
+  return instance;
 }

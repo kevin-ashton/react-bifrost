@@ -2,6 +2,7 @@
   "compilerOptions": {
     "lib": ["es2015", "es2017"],
     "target": "es2017",
+    "skipLibCheck": true,
     "declaration": true,
     "sourceMap": true,
     "esModuleInterop": true,

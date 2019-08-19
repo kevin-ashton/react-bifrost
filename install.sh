@@ -2,6 +2,7 @@
 
 root=`pwd`
 
+cd $root/module
 rm -Rf node_modules
 yarn install
 yarn build
