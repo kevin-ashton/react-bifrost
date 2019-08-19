@@ -1,6 +1,6 @@
 {
-  "name": "react-bifrost",
-  "version": "2.0.1",
+  "name": "root",
+  "version": "0.0.0",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,20 +10,12 @@
     "watch:acme-functions": "yarn --cwd example/acme-functions watch",
     "watch:acme-server": "yarn --cwd example/acme-server watch"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/kevin-ashton/react-bifrost.git"
-  },
   "keywords": [
     "react",
     "express"
   ],
   "author": "Kevin M Ashton",
   "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/kevin-ashton/react-bifrost/issues"
-  },
-  "homepage": "https://github.com/kevin-ashton/react-bifrost#readme",
   "dependencies": {
     "npm-run-all": "^4.1.5",
     "prettier": "^1.18.2"
