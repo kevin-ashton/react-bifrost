@@ -1,12 +1,12 @@
 export interface Person {
-  id?: string;
-  name: string;
+  id?: value;
+  name: value;
   age: number;
   weight: number;
   favFoods: {
-    asian: string;
-    italian: string;
-    american: string;
+    asian: value;
+    italian: value;
+    american: value;
   };
 }
 

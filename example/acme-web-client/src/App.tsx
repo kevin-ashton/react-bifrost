@@ -36,14 +36,11 @@ const App: React.FC = () => {
 };
 
 function Comp1() {
-  const r1 = bifrost.hello2.useLocal({ age: 34, name: 'Kevin' });
+  // const r1 = bifrost.hello2.useLocal({ age: 34, name: 'Kevin' }, []);
 
-  const r2 = bifrost.helloDelayed.useLocal({ age: 10, name: 'Bob' });
+  // const r2 = bifrost.helloDelayed.useLocal({ age: 10, name: 'Bob' }, []);
 
   const r3 = bifrost.helloPub.useLocalSub({ name: 'Kevin', age: 34 }, []);
-
-  console.log('render...')
-
 
   useEffect(() => {
     console.log('Comp1 mount');
@@ -53,15 +50,22 @@ function Comp1() {
     };
   }, []);
 
-  if (r1.isLoading || r2.isLoading || r3.isLoading) {
+  // if (r1.isLoading || r2.isLoading || r3.isLoading) {
+  if (r3.isLoading) {
     return <div>Loading</div>;
   }
 
   return (
     <div>
-      {/* <h1>{r1.data}</h1> */}
-      {/* <h1>{r2.data}</h1> */}
-      <h1>Auto {JSON.stringify(r3.data)}</h1>
+      {/* <h1>{r1.data}</h1>
+      <h1>{r2.data}</h1> */}
+      {/* <h1>Auto {JSON.stringify(r3.data)}</h1> */}
+      <pre>
+        {r3.data.people.map(p => {
+          return <div>{p.name}</div>
+        })}
+      </pre>
+
     </div>
   );
 }

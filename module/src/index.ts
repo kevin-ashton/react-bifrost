@@ -8,7 +8,7 @@ type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : ne
 type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
 
 interface UseCacheFns {
-  getCachedFnResult: (p: { key: string }) => Promise<string | undefined>;
+  getCachedFnResult: (p: { key: string }) => Promise<any | undefined>;
   setCachedFnResult: (p: { key: string; value: any }) => Promise<void>;
 }
 
@@ -140,12 +140,12 @@ export function registerFunctionsWithExpress(p: {
 }
 
 interface BifrostInstanceFn<ParamType, ResponseType> {
-  useLocal: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
+  useLocal: (p: ParamType, memoizationArr: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
   useLocalSub: (
     p: ParamType,
     memoizationArr: any[]
   ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType> };
-  useRemote: (p: ParamType, memoizationArr?: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
+  useRemote: (p: ParamType, memoizationArr: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
   fetchLocal: (p: ParamType) => Promise<ResponseType>;
   fetchRemote: (p: ParamType) => Promise<ResponseType>;
 }
@@ -171,14 +171,17 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       });
 
       p1.reactModule.useEffect(() => {
-        console.log(`Run useLocal for ${p1.fnName}`);
-        (async () => {
+        let hasUnmounted = false;
+        async function setResult() {
           let cacheKey = `local-${p1.fnName}-${md5(JSON.stringify(p))}`;
           if (p1.useCacheFns) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
               console.log(`Found in cache: ${cacheKey}`);
               ref.current = { data: cacheData, isLoading: false, error: null };
+              if (!hasUnmounted) {
+                setTriggerRender((s) => !s);
+              }
             } else {
               console.log(`Not found in cache: ${cacheKey}`);
             }
@@ -193,7 +196,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             // Cache for the local useFunction
             if (p1.useCacheFns) {
-              await p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: JSON.stringify(r) });
+              p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r }).catch((e) => console.error(e));
             }
 
             ref.current = {
@@ -208,9 +211,17 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               error: e
             };
           } finally {
-            setTriggerRender((a) => !a);
+            if (!hasUnmounted) {
+              setTriggerRender((a) => !a);
+            }
           }
-        })();
+        }
+
+        setResult();
+
+        return () => {
+          hasUnmounted = true;
+        };
       }, memoizationArr);
 
       return ref.current;
@@ -224,9 +235,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       });
 
       p1.reactModule.useEffect(() => {
-        console.log(`Run useLocalSub for ${p1.fnName}`);
         let unsub: any;
-        (async () => {
+        let hasUnmounted = false;
+
+        async function setupSubscription() {
           try {
             let sub = await p1.fn(p);
 
@@ -247,12 +259,18 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
                 if (p1.logger) {
                   p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Got cached data' } });
                 }
+                if (!hasUnmounted) {
+                  setTriggerRender((s) => !s);
+                }
               } else {
                 console.log(`Not found in cache: ${cacheKey}`);
               }
             }
 
             sub.onData((val) => {
+              if (p1.useCacheFns) {
+                p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: val }).catch((e) => console.error(e));
+              }
               if (p1.logger) {
                 p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Got new data from server' } });
               }
@@ -261,7 +279,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
                 isLoading: false,
                 error: null
               };
-              setTriggerRender((s) => !s);
+
+              if (!hasUnmounted) {
+                setTriggerRender((s) => !s);
+              }
             });
 
             sub.onError((err) => {
@@ -273,7 +294,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               }
             });
 
-            unsub = sub.dispose;
+            unsub = () => sub.dispose();
           } catch (e) {
             ref.current = {
               data: undefined,
@@ -281,9 +302,14 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               error: e
             };
           }
-        })();
+        }
 
-        return unsub;
+        setupSubscription();
+
+        return () => {
+          hasUnmounted = true;
+          unsub();
+        };
       }, memoizationArr);
 
       return ref.current;
@@ -325,8 +351,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       });
 
       p1.reactModule.useEffect(() => {
-        console.log(`Run useRemote for ${p1.fnName}`);
-        (async () => {
+        let hasUnmounted = false;
+
+        async function fetchAndSetData() {
           if (!p1.httpProcessor) {
             throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
           }
@@ -336,6 +363,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             if (cacheData) {
               console.log(`Found in cache: ${cacheKey}`);
               ref.current = { data: JSON.parse(cacheData), isLoading: false, error: null };
+              if (!hasUnmounted) {
+                setTriggerRender((s) => !s);
+              }
             } else {
               console.log(`Not found in cache: ${cacheKey}`);
             }
@@ -349,7 +379,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             // Cache for the local useFunction
             if (p1.useCacheFns) {
-              await p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: JSON.stringify(r1) });
+              p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r1 }).catch((e) => console.error(e));
             }
 
             ref.current = {
@@ -364,9 +394,17 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               error: e
             };
           } finally {
-            setTriggerRender((a) => !a);
+            if (!hasUnmounted) {
+              setTriggerRender((a) => !a);
+            }
           }
-        })();
+        }
+
+        fetchAndSetData();
+
+        return () => {
+          hasUnmounted = true;
+        };
       }, memoizationArr);
 
       return ref.current;

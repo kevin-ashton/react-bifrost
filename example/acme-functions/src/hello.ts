@@ -32,7 +32,7 @@ async function init() {
   console.log('Run init');
   console.log('-------------------------------------------------------------');
   try {
-    let r1 = await firebase.auth().signInWithEmailAndPassword('test@example.com', '2522blacky');
+    let r1 = await firebase.auth().signInWithEmailAndPassword('test@example.com', '25...y');
     console.log('User logged in');
     await resetData();
   } catch (e) {
@@ -82,7 +82,7 @@ export async function helloDelayed(p: { name: string; age: number }): Promise<st
 helloDelayed.exampleAuthFn = () => console.log('Auth looks good');
 
 interface HelloPubRtn {
-  person: Person;
+  people: Person[];
 }
 
 export async function helloPub(p: { name: string; age: number }): Promise<BifrostSub<HelloPubRtn>> {
@@ -94,19 +94,15 @@ export async function helloPub(p: { name: string; age: number }): Promise<Bifros
     }
   });
 
-  let inter = setInterval(() => {
-    console.log('Interval executed!');
-    instance.nextData({
-      person: {
-        age: Math.random(),
-        favFoods: { american: 'blah', asian: 'df', italian: 'fd' },
-        name: 'Kevin',
-        weight: 150
-      }
-    });
-  }, 1000);
+  let r1 = await personHelper.querySubscription({});
 
-  disposeFns.push(() => clearInterval(inter));
+  let peopleSubscription = r1.subscribe((p) => {
+    instance.nextData({ people: p.items });
+  });
+
+  disposeFns.push(() => {
+    peopleSubscription.unsubscribe();
+  });
 
   return instance;
 }

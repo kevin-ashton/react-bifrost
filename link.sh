@@ -7,8 +7,6 @@ root=`pwd`
 echo "Acme Functions"
 rm -Rf $root/example/acme-functions/node_modules/react-bifrost
 ln -s $root/module $root/example/acme-functions/node_modules/react-bifrost
-# rm -Rf $root/example/acme-functions/node_modules/firestore-lift
-# ln -s /Users/kevin/src/firestore-lift $root/example/acme-functions/node_modules/firestore-lift
 
 echo "Acme Server"
 rm -Rf $root/example/acme-server/node_modules/acme-functions
