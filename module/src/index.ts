@@ -362,7 +362,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
               console.log(`Found in cache: ${cacheKey}`);
-              ref.current = { data: JSON.parse(cacheData), isLoading: false, error: null };
+              ref.current = { data: cacheData, isLoading: false, error: null };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
