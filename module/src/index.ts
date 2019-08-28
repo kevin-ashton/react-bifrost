@@ -108,11 +108,11 @@ export function registerFunctionsWithExpress(p: {
       );
     }
 
-    console.log(`Registering api path: ${apiPath}`);
+    console.info(`Registering api path: ${apiPath}`);
     p.expressApp.post(apiPath, async (req: express.Request, res: express.Response) => {
       try {
         if (p.logger) {
-          p.logger({ fnName: fnName, payload: req.body });
+          p.logger({ fnName: fnName, details: { body: req.body } });
         }
 
         if (!hasAuthFn) {
@@ -131,7 +131,7 @@ export function registerFunctionsWithExpress(p: {
         if (e.statusCode && typeof e.statusCode === 'number' && e.error && e.error instanceof Error) {
           return res.status(e.statusCode).json({ status: 'Error' });
         } else {
-          console.log(e);
+          console.error(e);
           return res.status(500).json({ error: 'Error' });
         }
       }
@@ -151,7 +151,7 @@ interface BifrostInstanceFn<ParamType, ResponseType> {
 }
 
 type HttpProcessor = (p: { fnName: string; payload: any }) => Promise<any>;
-type Logger = (p: { fnName: string; payload: any; error?: Error }) => any;
+type Logger = (p: { fnName: string; details: any; error?: Error }) => any;
 
 function FnMethodsHelper<ParamType, ResponseType>(p1: {
   fn: any;
@@ -177,18 +177,15 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (p1.useCacheFns) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
-              console.log(`Found in cache: ${cacheKey}`);
               ref.current = { data: cacheData, isLoading: false, error: null };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
-            } else {
-              console.log(`Not found in cache: ${cacheKey}`);
             }
           }
 
           if (p1.logger) {
-            p1.logger({ fnName: p1.fnName, payload: p });
+            p1.logger({ fnName: p1.fnName, details: { type: 'useLocal', payload: p } });
           }
 
           try {
@@ -242,28 +239,27 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           try {
             let sub = await p1.fn(p);
 
-            if (!(sub instanceof BifrostSub)) {
-              throw new Error('useLocalSub may only be called on functions that return a BifrostSub');
+            if (!(!!sub.dispose && !!sub.nextData && !!sub.nextError && !!sub.onData && !!sub.onError)) {
+              throw new Error(
+                'useLocalSub may only be called on functions that return a BifrostSub or something with a similar shape'
+              );
             }
 
             if (p1.logger) {
-              p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Initializing useLocalSub' } });
+              p1.logger({
+                fnName: p1.fnName,
+                details: { type: 'useLocalSub-setup', parameters: p, description: 'Initializing useLocalSub' }
+              });
             }
 
             let cacheKey = `localSub-${p1.fnName}-${md5(JSON.stringify(p))}`;
             if (p1.useCacheFns) {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
-                console.log(`Found in cache: ${cacheKey}`);
                 ref.current = { data: cacheData, isLoading: false, error: null };
-                if (p1.logger) {
-                  p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Got cached data' } });
-                }
                 if (!hasUnmounted) {
                   setTriggerRender((s) => !s);
                 }
-              } else {
-                console.log(`Not found in cache: ${cacheKey}`);
               }
             }
 
@@ -272,7 +268,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
                 p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: val }).catch((e) => console.error(e));
               }
               if (p1.logger) {
-                p1.logger({ fnName: p1.fnName, payload: { parameters: p, description: 'Got new data from server' } });
+                p1.logger({
+                  fnName: p1.fnName,
+                  details: { type: 'useLocalSub-onData', parameters: p, description: 'Received data from sub' }
+                });
               }
               ref.current = {
                 data: val,
@@ -289,7 +288,8 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               if (p1.logger) {
                 p1.logger({
                   fnName: p1.fnName,
-                  payload: { parameters: p, error: err, description: 'Error in subscription stream' }
+                  details: { type: 'useLocalSub-error', parameters: p },
+                  error: err
                 });
               }
             });
@@ -315,9 +315,8 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       return ref.current;
     },
     fetchLocal: async (p: ParamType) => {
-      console.log(`Run fetchLocal for ${p1.fnName}`);
       if (p1.logger) {
-        p1.logger({ fnName: p1.fnName, payload: p });
+        p1.logger({ fnName: p1.fnName, details: { type: 'fetchLocal', payload: p } });
       }
       try {
         let r = await p1.fn(p);
@@ -328,12 +327,11 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       }
     },
     fetchRemote: async (p: ParamType) => {
-      console.log(`Run fetchRemote for ${p1.fnName}`);
       if (!p1.httpProcessor) {
         throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
       }
       if (p1.logger) {
-        p1.logger({ fnName: p1.fnName, payload: p });
+        p1.logger({ fnName: p1.fnName, details: { type: 'fetchRemote', payload: p } });
       }
       try {
         return await p1.httpProcessor({ fnName: p1.fnName, payload: p });
@@ -361,18 +359,15 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (p1.useCacheFns) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
-              console.log(`Found in cache: ${cacheKey}`);
               ref.current = { data: cacheData, isLoading: false, error: null };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
-            } else {
-              console.log(`Not found in cache: ${cacheKey}`);
             }
           }
 
           if (p1.logger) {
-            p1.logger({ fnName: p1.fnName, payload: p });
+            p1.logger({ fnName: p1.fnName, details: { type: 'useRemote', payload: p } });
           }
           try {
             let r1 = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
