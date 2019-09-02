@@ -16,14 +16,14 @@ type SubProps<T> = {
   dispose: () => void;
   onData: (fn: (a: T) => void) => void;
   onError: (fn: (a: Error) => void) => void;
-  nextData: (a: T) => void;
+  nextData: (a: T, opts?: { ensureSequentialTimestamp?: number }) => void;
   nextError: (e: Error) => void;
 };
 export class BifrostSub<T> {
   public dispose: () => void;
   public onData: (fn: (a: T) => void) => void;
   public onError: (fn: (a: Error) => void) => void;
-  public nextData: (a: T) => void;
+  public nextData: (a: T, opts?: { ensureSequentialTimestamp?: number }) => void;
   public nextError: (e: Error) => void;
 
   constructor(p: SubProps<T>) {
@@ -38,19 +38,29 @@ export class BifrostSub<T> {
 export function createBifrostSub<T>(a: { dispose: () => void }): BifrostSub<T> {
   const ee = new Emittery();
 
+  let lastTimestamp = 0;
+
   return new BifrostSub({
+    nextData: (a: T, opts: { ensureSequentialTimestamp?: number } = {}) => {
+      const shouldEmit = opts.ensureSequentialTimestamp ? opts.ensureSequentialTimestamp > lastTimestamp : true;
+      if (shouldEmit) {
+        lastTimestamp = opts.ensureSequentialTimestamp;
+        ee.emit('data', a);
+      }
+    },
     dispose: () => {
-      ee.clearListeners();
-      a.dispose();
+      try {
+        ee.clearListeners();
+        a.dispose();
+      } catch (e) {
+        console.error('Unable to dispose', e);
+      }
     },
     onData: (fn: (a: T) => void) => {
       ee.on('data', fn);
     },
     onError: (fn: (e: Error) => void) => {
       ee.on('error', fn);
-    },
-    nextData: (a: T) => {
-      ee.emit('data', a);
     },
     nextError: (e: Error) => {
       ee.emit('error', e);
@@ -407,7 +417,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   };
 }
 
-type BifrostInstance<FunctionsType extends Record<string, Function>> = {
+export type BifrostInstance<FunctionsType extends Record<string, Function>> = {
   [K in keyof FunctionsType]: BifrostInstanceFn<
     ArgumentType<FunctionsType[K]>,
     UnpackPromise<ReturnType<FunctionsType[K]>>

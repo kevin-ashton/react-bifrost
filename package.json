@@ -1,14 +1,16 @@
 {
-  "name": "root",
-  "version": "0.0.0",
+  "name": "react-bifrost",
+  "version": "2.1.1",
   "description": "",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "watch": "run-p watch:*",
-    "watch:react-bifrost": "yarn --cwd module tsc -w",
-    "watch:acme-functions": "yarn --cwd example/acme-functions watch",
-    "watch:acme-server": "yarn --cwd example/acme-server watch"
+    "build": "tsc",
+    "watch": "tsc -w --preserveWatchOutput"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevin-ashton/react-bifrost.git"
   },
   "keywords": [
     "react",
@@ -16,8 +18,17 @@
   ],
   "author": "Kevin M Ashton",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kevin-ashton/react-bifrost/issues"
+  },
+  "homepage": "https://github.com/kevin-ashton/react-bifrost#readme",
   "dependencies": {
-    "npm-run-all": "^4.1.5",
-    "prettier": "^1.18.2"
+    "@types/express": "^4.17.0",
+    "@types/node": "^12.6.9",
+    "emittery": "^0.4.1",
+    "express": "^4.17.1",
+    "lodash": "^4.17.15",
+    "md5": "^2.2.1",
+    "typescript": "^3.5.3"
   }
 }
