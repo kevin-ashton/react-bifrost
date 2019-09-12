@@ -150,12 +150,18 @@ export function registerFunctionsWithExpress(p: {
 }
 
 interface BifrostInstanceFn<ParamType, ResponseType> {
-  useLocal: (p: ParamType, memoizationArr: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
-  useLocalSub: (
+  useLocal: (
     p: ParamType,
     memoizationArr: any[]
-  ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType> };
-  useRemote: (p: ParamType, memoizationArr: any[]) => { isLoading: boolean; error: Error; data: ResponseType };
+  ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
+  useLocalSubscription: (
+    p: ParamType,
+    memoizationArr: any[]
+  ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType>; isFromCache: boolean };
+  useRemote: (
+    p: ParamType,
+    memoizationArr: any[]
+  ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
   fetchLocal: (p: ParamType) => Promise<ResponseType>;
   fetchRemote: (p: ParamType) => Promise<ResponseType>;
 }
@@ -177,7 +183,8 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       const ref = p1.reactModule.useRef({
         data: null,
         isLoading: true,
-        error: null
+        error: null,
+        isFromCache: false
       });
 
       p1.reactModule.useEffect(() => {
@@ -187,7 +194,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (p1.useCacheFns) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
-              ref.current = { data: cacheData, isLoading: false, error: null };
+              ref.current = { data: cacheData, isLoading: false, error: null, isFromCache: true };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
@@ -209,12 +216,14 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             ref.current = {
               data: r,
               isLoading: false,
+              isFromCache: false,
               error: null
             };
           } catch (e) {
             ref.current = {
               data: undefined,
               isLoading: false,
+              isFromCache: false,
               error: e
             };
           } finally {
@@ -233,16 +242,17 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       return ref.current;
     },
-    useLocalSub: (p: ParamType, memoizationArr: any[] = []) => {
+    useLocalSubscription: (p: ParamType, memoizationArr: any[] = []) => {
       const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
         isLoading: true,
+        isFromCache: false,
         error: null
       });
 
       p1.reactModule.useEffect(() => {
-        let unsub: any;
+        let unsub: any = () => {};
         let hasUnmounted = false;
 
         async function setupSubscription() {
@@ -266,7 +276,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             if (p1.useCacheFns) {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
-                ref.current = { data: cacheData, isLoading: false, error: null };
+                ref.current = { data: cacheData, isLoading: false, error: null, isFromCache: true };
                 if (!hasUnmounted) {
                   setTriggerRender((s) => !s);
                 }
@@ -286,6 +296,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               ref.current = {
                 data: val,
                 isLoading: false,
+                isFromCache: false,
                 error: null
               };
 
@@ -304,11 +315,16 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               }
             });
 
-            unsub = () => sub.dispose();
+            if (hasUnmounted) {
+              sub.dispose();
+            } else {
+              unsub = () => sub.dispose();
+            }
           } catch (e) {
             ref.current = {
               data: undefined,
               isLoading: false,
+              isFromCache: false,
               error: e
             };
           }
@@ -355,7 +371,8 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       const ref = p1.reactModule.useRef({
         data: null,
         isLoading: true,
-        error: null
+        error: null,
+        isFromCache: false
       });
 
       p1.reactModule.useEffect(() => {
@@ -369,7 +386,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (p1.useCacheFns) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
-              ref.current = { data: cacheData, isLoading: false, error: null };
+              ref.current = { data: cacheData, isLoading: false, error: null, isFromCache: true };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
@@ -389,12 +406,14 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             ref.current = {
               data: r1,
+              isFromCache: false,
               isLoading: false,
               error: null
             };
           } catch (e) {
             ref.current = {
               data: undefined,
+              isFromCache: false,
               isLoading: false,
               error: e
             };
