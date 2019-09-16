@@ -19,7 +19,7 @@ type SubProps<T> = {
   nextData: (a: T, opts?: { ensureSequentialTimestamp?: number }) => void;
   nextError: (e: Error) => void;
 };
-export class BifrostSub<T> {
+export class BifrostSubscription<T> {
   public dispose: () => void;
   public onData: (fn: (a: T) => void) => void;
   public onError: (fn: (a: Error) => void) => void;
@@ -35,12 +35,12 @@ export class BifrostSub<T> {
   }
 }
 
-export function createBifrostSubscription<T>(a: { dispose: () => void }): BifrostSub<T> {
+export function createBifrostSubscriptionscription<T>(a: { dispose: () => void }): BifrostSubscription<T> {
   const ee = new Emittery();
 
   let lastTimestamp = 0;
 
-  return new BifrostSub({
+  return new BifrostSubscription({
     nextData: (a: T, opts: { ensureSequentialTimestamp?: number } = {}) => {
       const shouldEmit = opts.ensureSequentialTimestamp ? opts.ensureSequentialTimestamp > lastTimestamp : true;
       if (shouldEmit) {
@@ -68,7 +68,7 @@ export function createBifrostSubscription<T>(a: { dispose: () => void }): Bifros
   });
 }
 
-export type UnpackBifrostSub<T> = T extends BifrostSub<infer U> ? U : T;
+export type UnpackBifrostSubscription<T> = T extends BifrostSubscription<infer U> ? U : T;
 
 export function createBifrost<FunctionsType extends Record<string, Function>>(p: {
   fns: FunctionsType;
@@ -157,7 +157,7 @@ interface BifrostInstanceFn<ParamType, ResponseType> {
   useClientSubscription: (
     p: ParamType,
     memoizationArr: any[]
-  ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType>; isFromCache: boolean };
+  ) => { isLoading: boolean; error: Error; data: UnpackBifrostSubscription<ResponseType>; isFromCache: boolean };
   useServer: (
     p: ParamType,
     memoizationArr: any[]
@@ -260,7 +260,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             if (!(!!sub.dispose && !!sub.nextData && !!sub.nextError && !!sub.onData && !!sub.onError)) {
               throw new Error(
-                'useLocalSub may only be called on functions that return a BifrostSub or something with a similar shape'
+                'useLocalSub may only be called on functions that return a BifrostSubscription or something with a similar shape'
               );
             }
 
