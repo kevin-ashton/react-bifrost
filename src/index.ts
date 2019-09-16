@@ -35,7 +35,7 @@ export class BifrostSubscription<T> {
   }
 }
 
-export function createBifrostSubscriptionscription<T>(a: { dispose: () => void }): BifrostSubscription<T> {
+export function createBifrostSubscription<T>(a: { dispose: () => void }): BifrostSubscription<T> {
   const ee = new Emittery();
 
   let lastTimestamp = 0;
