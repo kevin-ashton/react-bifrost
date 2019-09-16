@@ -35,7 +35,7 @@ export class BifrostSub<T> {
   }
 }
 
-export function createBifrostSub<T>(a: { dispose: () => void }): BifrostSub<T> {
+export function createBifrostSubscription<T>(a: { dispose: () => void }): BifrostSub<T> {
   const ee = new Emittery();
 
   let lastTimestamp = 0;
@@ -150,20 +150,19 @@ export function registerFunctionsWithExpress(p: {
 }
 
 interface BifrostInstanceFn<ParamType, ResponseType> {
-  useLocal: (
+  useClient: (
     p: ParamType,
     memoizationArr: any[]
   ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
-  useLocalSubscription: (
+  useClientSubscription: (
     p: ParamType,
     memoizationArr: any[]
   ) => { isLoading: boolean; error: Error; data: UnpackBifrostSub<ResponseType>; isFromCache: boolean };
-  useRemote: (
+  useServer: (
     p: ParamType,
     memoizationArr: any[]
   ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
-  fetchLocal: (p: ParamType) => Promise<ResponseType>;
-  fetchRemote: (p: ParamType) => Promise<ResponseType>;
+  fetchServer: (p: ParamType) => Promise<ResponseType>;
 }
 
 type HttpProcessor = (p: { fnName: string; payload: any }) => Promise<any>;
@@ -178,7 +177,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   logger: Logger | undefined;
 }): BifrostInstanceFn<ParamType, ResponseType> {
   return {
-    useLocal: (p: ParamType, memoizationArr: any[] = []) => {
+    useClient: (p: ParamType, memoizationArr: any[] = []) => {
       const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -202,7 +201,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           }
 
           if (p1.logger) {
-            p1.logger({ fnName: p1.fnName, details: { type: 'useLocal', payload: p } });
+            p1.logger({ fnName: p1.fnName, details: { type: 'useClient', payload: p } });
           }
 
           try {
@@ -242,7 +241,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       return ref.current;
     },
-    useLocalSubscription: (p: ParamType, memoizationArr: any[] = []) => {
+    useClientSubscription: (p: ParamType, memoizationArr: any[] = []) => {
       const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -340,33 +339,21 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       return ref.current;
     },
-    fetchLocal: async (p: ParamType) => {
-      if (p1.logger) {
-        p1.logger({ fnName: p1.fnName, details: { type: 'fetchLocal', payload: p } });
-      }
-      try {
-        let r = await p1.fn(p);
-        return r;
-      } catch (e) {
-        console.error(`Failed to fetchLocal for ${p1.fnName}`);
-        throw e;
-      }
-    },
-    fetchRemote: async (p: ParamType) => {
+    fetchServer: async (p: ParamType) => {
       if (!p1.httpProcessor) {
-        throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
+        throw new Error(`HttpProcessor not defined. Cannot run useServer. `);
       }
       if (p1.logger) {
-        p1.logger({ fnName: p1.fnName, details: { type: 'fetchRemote', payload: p } });
+        p1.logger({ fnName: p1.fnName, details: { type: 'fetchServer', payload: p } });
       }
       try {
         return await p1.httpProcessor({ fnName: p1.fnName, payload: p });
       } catch (e) {
-        console.error(`Failed to fetchRemote for ${p1.fnName}`);
+        console.error(`Failed to fetchServer for ${p1.fnName}`);
         throw e;
       }
     },
-    useRemote: (p: ParamType, memoizationArr: any[] = []) => {
+    useServer: (p: ParamType, memoizationArr: any[] = []) => {
       const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -380,7 +367,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
         async function fetchAndSetData() {
           if (!p1.httpProcessor) {
-            throw new Error(`HttpProcessor not defined. Cannot run useRemote. `);
+            throw new Error(`HttpProcessor not defined. Cannot run useServer. `);
           }
           let cacheKey = `remote-${p1.fnName}-${md5(JSON.stringify(p))}`;
           if (p1.useCacheFns) {
@@ -394,7 +381,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           }
 
           if (p1.logger) {
-            p1.logger({ fnName: p1.fnName, details: { type: 'useRemote', payload: p } });
+            p1.logger({ fnName: p1.fnName, details: { type: 'useServer', payload: p } });
           }
           try {
             let r1 = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
