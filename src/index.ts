@@ -1,6 +1,8 @@
 import Emittery from 'emittery';
 import * as express from 'express';
 import md5 from 'md5';
+import _ from 'lodash';
+
 import { isSerializable } from './misc';
 
 type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
@@ -8,7 +10,7 @@ type ArgumentType<F extends Function> = F extends (arg: infer A) => any ? A : ne
 type ReturnType<T> = T extends (...args: any[]) => infer R ? R : any;
 
 interface UseCacheFns {
-  getCachedFnResult: (p: { key: string }) => Promise<any | undefined>;
+  getCachedFnResult: (p: { key: string }) => Promise<{ cachedDateMS: number; value: any } | void>;
   setCachedFnResult: (p: { key: string; value: any }) => Promise<void>;
 }
 
@@ -39,13 +41,16 @@ export function createBifrostSubscription<T>(a: { dispose: () => void }): Bifros
   const ee = new Emittery();
 
   let lastTimestamp = 0;
+  let currentValue: any;
 
   return new BifrostSubscription({
-    nextData: (a: T, opts: { ensureSequentialTimestamp?: number } = {}) => {
-      const shouldEmit = opts.ensureSequentialTimestamp ? opts.ensureSequentialTimestamp > lastTimestamp : true;
-      if (shouldEmit) {
+    nextData: (data: T, opts: { ensureSequentialTimestamp?: number } = {}) => {
+      const hasChanged = !_.isEqual(currentValue, data);
+      const sequenceIsGood = opts.ensureSequentialTimestamp ? opts.ensureSequentialTimestamp > lastTimestamp : true;
+      if (sequenceIsGood && hasChanged) {
+        currentValue = data;
         lastTimestamp = opts.ensureSequentialTimestamp;
-        ee.emit('data', a);
+        ee.emit('data', data);
       }
     },
     dispose: () => {
@@ -57,6 +62,10 @@ export function createBifrostSubscription<T>(a: { dispose: () => void }): Bifros
       }
     },
     onData: (fn: (a: T) => void) => {
+      // If data as previously been emitted provide it to the function
+      if (currentValue) {
+        fn(currentValue);
+      }
       ee.on('data', fn);
     },
     onError: (fn: (e: Error) => void) => {
@@ -112,13 +121,10 @@ export function registerFunctionsWithExpress(p: {
 
     let hasAuthFn = typeof p.fns[fnName][p.fnAuthKey] === 'function';
 
-    if (!hasAuthFn) {
-      console.warn(
-        `Warning: No auth function specified for ${fnName}. Request to this function will be denied.  fnAuthKey: ${p.fnAuthKey}`
-      );
+    if (hasAuthFn) {
+      console.info(`Registering api path: ${apiPath}`);
     }
 
-    console.info(`Registering api path: ${apiPath}`);
     p.expressApp.post(apiPath, async (req: express.Request, res: express.Response) => {
       try {
         if (p.logger) {
@@ -126,7 +132,9 @@ export function registerFunctionsWithExpress(p: {
         }
 
         if (!hasAuthFn) {
-          return res.status(401).json({ status: 'unauthorized', details: 'no fnAuthKey defined' });
+          return res
+            .status(401)
+            .json({ status: 'unauthorized', details: 'No auth defined for this function. AuthKey: ' + p.fnAuthKey });
         }
         await p.fns[fnName][p.fnAuthKey](req);
 
@@ -152,21 +160,29 @@ export function registerFunctionsWithExpress(p: {
 interface BifrostInstanceFn<ParamType, ResponseType> {
   useClient: (
     p: ParamType,
-    memoizationArr: any[]
+    memoizationArr: any[],
+    options?: HelperOptions
   ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
+  fetchClient: (p: ParamType, options?: HelperOptions) => Promise<ResponseType>;
   useClientSubscription: (
     p: ParamType,
-    memoizationArr: any[]
+    memoizationArr: any[],
+    options?: HelperOptions
   ) => { isLoading: boolean; error: Error; data: UnpackBifrostSubscription<ResponseType>; isFromCache: boolean };
   useServer: (
     p: ParamType,
-    memoizationArr: any[]
+    memoizationArr: any[],
+    options?: HelperOptions
   ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
-  fetchServer: (p: ParamType) => Promise<ResponseType>;
+  fetchServer: (p: ParamType, options?: HelperOptions) => Promise<ResponseType>;
 }
 
 type HttpProcessor = (p: { fnName: string; payload: any }) => Promise<any>;
 type Logger = (p: { fnName: string; details: any; error?: Error }) => any;
+
+interface HelperOptions {
+  useCacheOnlyWithinMS?: number;
+}
 
 function FnMethodsHelper<ParamType, ResponseType>(p1: {
   fn: any;
@@ -177,7 +193,36 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   logger: Logger | undefined;
 }): BifrostInstanceFn<ParamType, ResponseType> {
   return {
-    useClient: (p: ParamType, memoizationArr: any[] = []) => {
+    fetchClient: async (p: ParamType, options?: HelperOptions) => {
+      if (p1.logger) {
+        p1.logger({ fnName: p1.fnName, details: { type: 'fetchClient', payload: p } });
+      }
+
+      let cacheKey = `fetchClient-${p1.fnName}-${md5(JSON.stringify(p))}`;
+      if (p1.useCacheFns) {
+        let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
+        if (cacheData) {
+          if (options && options.useCacheOnlyWithinMS) {
+            let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+            if (cacheData.cachedDateMS > cutoff) {
+              return cacheData.value;
+            }
+          }
+        }
+      }
+
+      try {
+        let r = await p1.fn(p);
+        if (p1.useCacheFns) {
+          p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r }).catch((e) => console.error(e));
+        }
+        return r;
+      } catch (e) {
+        console.error(`Failed to fetchClient for ${p1.fnName}`);
+        throw e;
+      }
+    },
+    useClient: (p: ParamType, memoizationArr: any[] = [], options?: HelperOptions) => {
       const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -189,19 +234,26 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       p1.reactModule.useEffect(() => {
         let hasUnmounted = false;
         async function setResult() {
-          let cacheKey = `local-${p1.fnName}-${md5(JSON.stringify(p))}`;
+          if (p1.logger) {
+            p1.logger({ fnName: p1.fnName, details: { type: 'useClient', payload: p } });
+          }
+
+          let cacheKey = `useClient-${p1.fnName}-${md5(JSON.stringify(p))}`;
           if (p1.useCacheFns) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
-              ref.current = { data: cacheData, isLoading: false, error: null, isFromCache: true };
+              ref.current = { data: cacheData.value, isLoading: false, error: null, isFromCache: true };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
+              if (options && options.useCacheOnlyWithinMS) {
+                let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+                if (cacheData.cachedDateMS > cutoff) {
+                  // Since we are within the acceptable cache window
+                  return;
+                }
+              }
             }
-          }
-
-          if (p1.logger) {
-            p1.logger({ fnName: p1.fnName, details: { type: 'useClient', payload: p } });
           }
 
           try {
@@ -260,22 +312,26 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
             if (!(!!sub.dispose && !!sub.nextData && !!sub.nextError && !!sub.onData && !!sub.onError)) {
               throw new Error(
-                'useLocalSub may only be called on functions that return a BifrostSubscription or something with a similar shape'
+                'useClientSubscription may only be called on functions that return a BifrostSubscription or something with a similar shape'
               );
             }
 
             if (p1.logger) {
               p1.logger({
                 fnName: p1.fnName,
-                details: { type: 'useLocalSub-setup', parameters: p, description: 'Initializing useLocalSub' }
+                details: {
+                  type: 'useClientSubscription-setup',
+                  parameters: p,
+                  description: 'Initializing useClientSubscription'
+                }
               });
             }
 
-            let cacheKey = `localSub-${p1.fnName}-${md5(JSON.stringify(p))}`;
+            let cacheKey = `useClientSubscription-${p1.fnName}-${md5(JSON.stringify(p))}`;
             if (p1.useCacheFns) {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
-                ref.current = { data: cacheData, isLoading: false, error: null, isFromCache: true };
+                ref.current = { data: cacheData.value, isLoading: false, error: null, isFromCache: true };
                 if (!hasUnmounted) {
                   setTriggerRender((s) => !s);
                 }
@@ -289,7 +345,11 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               if (p1.logger) {
                 p1.logger({
                   fnName: p1.fnName,
-                  details: { type: 'useLocalSub-onData', parameters: p, description: 'Received data from sub' }
+                  details: {
+                    type: 'useClientSubscription-onData',
+                    parameters: p,
+                    description: 'Received data from sub'
+                  }
                 });
               }
               ref.current = {
@@ -308,7 +368,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               if (p1.logger) {
                 p1.logger({
                   fnName: p1.fnName,
-                  details: { type: 'useLocalSub-error', parameters: p },
+                  details: { type: 'useClientSubscription-error', parameters: p },
                   error: err
                 });
               }
@@ -339,13 +399,27 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       return ref.current;
     },
-    fetchServer: async (p: ParamType) => {
+    fetchServer: async (p: ParamType, options?: HelperOptions) => {
       if (!p1.httpProcessor) {
         throw new Error(`HttpProcessor not defined. Cannot run useServer. `);
       }
       if (p1.logger) {
         p1.logger({ fnName: p1.fnName, details: { type: 'fetchServer', payload: p } });
       }
+
+      let cacheKey = `fetchServer-${p1.fnName}-${md5(JSON.stringify(p))}`;
+      if (p1.useCacheFns) {
+        let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
+        if (cacheData) {
+          if (options && options.useCacheOnlyWithinMS) {
+            let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+            if (cacheData.cachedDateMS > cutoff) {
+              return cacheData.value;
+            }
+          }
+        }
+      }
+
       try {
         return await p1.httpProcessor({ fnName: p1.fnName, payload: p });
       } catch (e) {
@@ -353,7 +427,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         throw e;
       }
     },
-    useServer: (p: ParamType, memoizationArr: any[] = []) => {
+    useServer: (p: ParamType, memoizationArr: any[] = [], options?: HelperOptions) => {
       const [_, setTriggerRender] = p1.reactModule.useState(true);
       const ref = p1.reactModule.useRef({
         data: null,
@@ -369,20 +443,29 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (!p1.httpProcessor) {
             throw new Error(`HttpProcessor not defined. Cannot run useServer. `);
           }
-          let cacheKey = `remote-${p1.fnName}-${md5(JSON.stringify(p))}`;
-          if (p1.useCacheFns) {
-            let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
-            if (cacheData) {
-              ref.current = { data: cacheData, isLoading: false, error: null, isFromCache: true };
-              if (!hasUnmounted) {
-                setTriggerRender((s) => !s);
-              }
-            }
-          }
 
           if (p1.logger) {
             p1.logger({ fnName: p1.fnName, details: { type: 'useServer', payload: p } });
           }
+
+          let cacheKey = `server-${p1.fnName}-${md5(JSON.stringify(p))}`;
+          if (p1.useCacheFns) {
+            let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
+            if (cacheData) {
+              ref.current = { data: cacheData.value, isLoading: false, error: null, isFromCache: true };
+              if (!hasUnmounted) {
+                setTriggerRender((s) => !s);
+              }
+              if (options && options.useCacheOnlyWithinMS) {
+                let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+                if (cacheData.cachedDateMS > cutoff) {
+                  // Since we are within the acceptable cache window
+                  return;
+                }
+              }
+            }
+          }
+
           try {
             let r1 = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
 
