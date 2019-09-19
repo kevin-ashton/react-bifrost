@@ -34,7 +34,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   logger: Logger | undefined;
 }): BifrostInstanceFn<ParamType, ResponseType> {
   return {
-    getClientSubscription: (p: ParamType, options?: HelperOptions) => {
+    getClientSubscription: (p: ParamType) => {
       return {
         subscribe: (fn) => {
           let sub = p1.fn(p);
@@ -70,7 +70,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               p1.logger({
                 fnName: p1.fnName,
                 details: {
-                  type: 'useClientSubscription-onData',
+                  type: 'getClientSubscription-onData',
                   parameters: p,
                   description: 'Received data from sub'
                 }
@@ -84,7 +84,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             if (p1.logger) {
               p1.logger({
                 fnName: p1.fnName,
-                details: { type: 'useClientSubscription-error', parameters: p },
+                details: { type: 'getClientSubscription-error', parameters: p },
                 error: err
               });
             }
@@ -107,14 +107,11 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       if (p1.useCacheFns) {
         let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
         if (cacheData) {
-          if (options && options.useCacheOnlyWithinMS) {
-            let cutoff = Date.now() - options.useCacheOnlyWithinMS;
-            if (cacheData.cachedDateMS > cutoff) {
-              return {
-                data: cacheData.value,
-                isFromCache: true
-              };
-            }
+          if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+            return {
+              data: cacheData.value,
+              isFromCache: true
+            };
           }
         }
       }
@@ -154,12 +151,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
-              if (options && options.useCacheOnlyWithinMS) {
-                let cutoff = Date.now() - options.useCacheOnlyWithinMS;
-                if (cacheData.cachedDateMS > cutoff) {
-                  // Since we are within the acceptable cache window
-                  return;
-                }
+              if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+                // Since we are within the acceptable cache window
+                return;
               }
             }
           }
@@ -328,14 +322,11 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       if (p1.useCacheFns) {
         let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
         if (cacheData) {
-          if (options && options.useCacheOnlyWithinMS) {
-            let cutoff = Date.now() - options.useCacheOnlyWithinMS;
-            if (cacheData.cachedDateMS > cutoff) {
-              return {
-                data: cacheData.value,
-                isFromCache: true
-              };
-            }
+          if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+            return {
+              data: cacheData.value,
+              isFromCache: true
+            };
           }
         }
       }
@@ -386,13 +377,9 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
-              if (options && options.useCacheOnlyWithinMS) {
-                let cutoff = Date.now() - options.useCacheOnlyWithinMS;
-                if (cacheData.cachedDateMS > cutoff) {
-                  // Since we are within the acceptable cache window
-                  console.log('------------------- JUST USING THE CACHE!');
-                  return;
-                }
+              if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+                // Since we are within the acceptable cache window
+                return;
               }
             }
           }
@@ -434,4 +421,13 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       return ref.current;
     }
   };
+}
+
+function shouldUseCachedData({ options, cachedDateMS }: { options: HelperOptions; cachedDateMS: number }): boolean {
+  if (options && options.useCacheOnlyWithinMS) {
+    let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+    return cachedDateMS > cutoff || options.useCacheOnlyWithinMS === 0;
+  } else {
+    return false;
+  }
 }

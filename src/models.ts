@@ -42,8 +42,7 @@ export type SubProps<T> = {
 
 export interface BifrostInstanceFn<ParamType, ResponseType> {
   getClientSubscription: (
-    p: ParamType,
-    options?: HelperOptions
+    p: ParamType
   ) => {
     subscribe: (
       fn: (p: { data: UnpackBifrostSubscription<ResponseType>; isFromCache: boolean }) => void
