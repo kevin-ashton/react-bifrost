@@ -57,7 +57,6 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             setTimeout(async () => {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
-                console.log('------- FOUND A value in cache');
                 fn({ data: cacheData.value, isFromCache: true });
               }
             }, 0);
