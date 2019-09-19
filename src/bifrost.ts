@@ -34,6 +34,71 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   logger: Logger | undefined;
 }): BifrostInstanceFn<ParamType, ResponseType> {
   return {
+    getClientSubscription: (p: ParamType, options?: HelperOptions) => {
+      return {
+        subscribe: (fn) => {
+          let sub = p1.fn(p);
+          if (sub.then) {
+            let msg =
+              'It appears the function that is supposed to be returning a BifrostSubscription is returning a promise. This is not allowed. Can cause various race conditions when components unmount ';
+            console.error(msg);
+            throw new Error(msg);
+          }
+
+          if (!(!!sub.dispose && !!sub.nextData && !!sub.nextError && !!sub.onData && !!sub.onError)) {
+            let msg =
+              'getClientSubscription may only be called on functions that return a BifrostSubscription or something with a similar shape';
+            console.error(msg);
+            throw new Error(msg);
+          }
+
+          let cacheKey = `getClientSubscription-${p1.fnName}-${md5(jsonStableStringify(p))}`;
+          if (p1.useCacheFns) {
+            setTimeout(async () => {
+              let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
+              if (cacheData) {
+                console.log('------- FOUND A value in cache');
+                fn({ data: cacheData.value, isFromCache: true });
+              }
+            }, 0);
+          }
+
+          sub.onData((val) => {
+            if (p1.useCacheFns) {
+              p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: val }).catch((e) => console.error(e));
+            }
+            if (p1.logger) {
+              p1.logger({
+                fnName: p1.fnName,
+                details: {
+                  type: 'useClientSubscription-onData',
+                  parameters: p,
+                  description: 'Received data from sub'
+                }
+              });
+            }
+            fn({ data: val, isFromCache: false });
+          });
+
+          sub.onError((err) => {
+            console.error(err);
+            if (p1.logger) {
+              p1.logger({
+                fnName: p1.fnName,
+                details: { type: 'useClientSubscription-error', parameters: p },
+                error: err
+              });
+            }
+          });
+
+          return {
+            unsubscribe: () => {
+              sub.dispose();
+            }
+          };
+        }
+      };
+    },
     fetchClient: async (p: ParamType, options?: HelperOptions) => {
       if (p1.logger) {
         p1.logger({ fnName: p1.fnName, details: { type: 'fetchClient', payload: p } });
