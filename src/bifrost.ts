@@ -33,6 +33,19 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   httpProcessor: HttpProcessor | undefined;
   logger: Logger | undefined;
 }): BifrostInstanceFn<ParamType, ResponseType> {
+
+
+  const cacheExists = !!p1.useCacheFns;
+  const loggerExists = !!p1.logger;
+  const cacheWindowExists = (options: HelperOptions) => {
+    return options && options.useCacheOnlyWithinMS
+  }
+
+  const cacheNotDisabled = (options: HelperOptions) => {
+    return !(options && options.disableCache)
+  }
+
+
   return {
     getClientSubscription: (p: ParamType) => {
       return {
@@ -53,7 +66,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           }
 
           let cacheKey = `getClientSubscription-${p1.fnName}-${md5(jsonStableStringify(p))}`;
-          if (p1.useCacheFns) {
+          if (cacheExists) {
             setTimeout(async () => {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
@@ -63,10 +76,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           }
 
           sub.onData((val) => {
-            if (p1.useCacheFns) {
+            if (cacheExists) {
               p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: val }).catch((e) => console.error(e));
             }
-            if (p1.logger) {
+            if (loggerExists) {
               p1.logger({
                 fnName: p1.fnName,
                 details: {
@@ -81,7 +94,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
           sub.onError((err) => {
             console.error(err);
-            if (p1.logger) {
+            if (loggerExists) {
               p1.logger({
                 fnName: p1.fnName,
                 details: { type: 'getClientSubscription-error', parameters: p },
@@ -99,15 +112,16 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       };
     },
     fetchClient: async (p: ParamType, options?: HelperOptions) => {
-      if (p1.logger) {
+      if (loggerExists) {
         p1.logger({ fnName: p1.fnName, details: { type: 'fetchClient', payload: p } });
       }
 
       let cacheKey = `fetchClient-${p1.fnName}-${md5(jsonStableStringify(p))}`;
-      if (p1.useCacheFns) {
+      // We only check the cache if they have specified a useCacheOnlyWithinMS since it is a fetch
+      if (cacheExists && cacheWindowExists(options) && cacheNotDisabled(options)) {
         let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
         if (cacheData) {
-          if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+          if (cacheDataValid({ options, cachedDateMS: cacheData.cachedDateMS })) {
             return {
               data: cacheData.value,
               isFromCache: true
@@ -118,7 +132,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       try {
         let r = await p1.fn(p);
-        if (p1.useCacheFns) {
+        if (cacheExists) {
           p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r }).catch((e) => console.error(e));
         }
         return { data: r, isFromCache: false };
@@ -139,19 +153,19 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
       p1.reactModule.useEffect(() => {
         let hasUnmounted = false;
         async function setResult() {
-          if (p1.logger) {
+          if (loggerExists) {
             p1.logger({ fnName: p1.fnName, details: { type: 'useClient', payload: p } });
           }
 
           let cacheKey = `useClient-${p1.fnName}-${md5(jsonStableStringify(p))}`;
-          if (p1.useCacheFns) {
+          if (cacheExists && cacheNotDisabled(options)) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
               ref.current = { data: cacheData.value, isLoading: false, error: null, isFromCache: true };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
-              if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+              if (cacheDataValid({ options, cachedDateMS: cacheData.cachedDateMS })) {
                 // Since we are within the acceptable cache window
                 return;
               }
@@ -162,7 +176,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             let r = await p1.fn(p);
 
             // Cache for the local useFunction
-            if (p1.useCacheFns) {
+            if (cacheExists) {
               p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r }).catch((e) => console.error(e));
             }
 
@@ -210,7 +224,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
         async function setupSubscription() {
           try {
-            if (p1.logger) {
+            if (loggerExists) {
               p1.logger({
                 fnName: p1.fnName,
                 details: {
@@ -237,7 +251,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             }
 
             let cacheKey = `useClientSubscription-${p1.fnName}-${md5(jsonStableStringify(p))}`;
-            if (p1.useCacheFns) {
+            if (cacheExists) {
               let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
               if (cacheData) {
                 ref.current = { data: cacheData.value, isLoading: false, error: null, isFromCache: true };
@@ -248,10 +262,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             }
 
             sub.onData((val) => {
-              if (p1.useCacheFns) {
+              if (cacheExists) {
                 p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: val }).catch((e) => console.error(e));
               }
-              if (p1.logger) {
+              if (loggerExists) {
                 p1.logger({
                   fnName: p1.fnName,
                   details: {
@@ -274,7 +288,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             });
 
             sub.onError((err) => {
-              if (p1.logger) {
+              if (loggerExists) {
                 p1.logger({
                   fnName: p1.fnName,
                   details: { type: 'useClientSubscription-error', parameters: p },
@@ -314,15 +328,15 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
         console.error(msg);
         throw new Error(msg);
       }
-      if (p1.logger) {
+      if (loggerExists) {
         p1.logger({ fnName: p1.fnName, details: { type: 'fetchServer', payload: p } });
       }
 
       let cacheKey = `fetchServer-${p1.fnName}-${md5(jsonStableStringify(p))}`;
-      if (p1.useCacheFns) {
+      if (cacheExists && cacheWindowExists(options) && cacheNotDisabled(options)) {
         let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
         if (cacheData) {
-          if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+          if (cacheDataValid({ options, cachedDateMS: cacheData.cachedDateMS })) {
             return {
               data: cacheData.value,
               isFromCache: true
@@ -333,7 +347,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
       try {
         let r = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
-        if (p1.useCacheFns) {
+        if (cacheExists) {
           p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r }).catch((e) => console.error(e));
         }
 
@@ -365,19 +379,19 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
             throw new Error(msg);
           }
 
-          if (p1.logger) {
+          if (loggerExists) {
             p1.logger({ fnName: p1.fnName, details: { type: 'useServer', payload: p } });
           }
 
           let cacheKey = `server-${p1.fnName}-${md5(jsonStableStringify(p))}`;
-          if (p1.useCacheFns) {
+          if (cacheExists && cacheNotDisabled(options)) {
             let cacheData = await p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (cacheData) {
               ref.current = { data: cacheData.value, isLoading: false, error: null, isFromCache: true };
               if (!hasUnmounted) {
                 setTriggerRender((s) => !s);
               }
-              if (shouldUseCachedData({ options, cachedDateMS: cacheData.cachedDateMS })) {
+              if (cacheDataValid({ options, cachedDateMS: cacheData.cachedDateMS })) {
                 // Since we are within the acceptable cache window
                 return;
               }
@@ -387,7 +401,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           try {
             let r1 = await p1.httpProcessor({ fnName: p1.fnName, payload: p });
 
-            if (p1.useCacheFns) {
+            if (cacheExists) {
               p1.useCacheFns.setCachedFnResult({ key: cacheKey, value: r1 }).catch((e) => console.error(e));
             }
 
@@ -423,11 +437,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   };
 }
 
-function shouldUseCachedData({ options, cachedDateMS }: { options: HelperOptions; cachedDateMS: number }): boolean {
-  if (options && options.useCacheOnlyWithinMS) {
-    let cutoff = Date.now() - options.useCacheOnlyWithinMS;
-    return cachedDateMS > cutoff || options.useCacheOnlyWithinMS === 0;
-  } else {
-    return false;
-  }
+function cacheDataValid({ options, cachedDateMS }: { options: HelperOptions; cachedDateMS: number }): boolean {
+  let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+  return cachedDateMS > cutoff;
 }

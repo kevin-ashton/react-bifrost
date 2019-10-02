@@ -72,4 +72,5 @@ export type Logger = (p: { fnName: string; details: any; error?: Error }) => any
 
 export interface HelperOptions {
   useCacheOnlyWithinMS?: number;
+  disableCache?: boolean; // If set will ignore options
 }
