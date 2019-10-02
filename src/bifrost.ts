@@ -33,18 +33,15 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   httpProcessor: HttpProcessor | undefined;
   logger: Logger | undefined;
 }): BifrostInstanceFn<ParamType, ResponseType> {
-
-
   const cacheExists = !!p1.useCacheFns;
   const loggerExists = !!p1.logger;
   const cacheWindowExists = (options: HelperOptions) => {
-    return options && options.useCacheOnlyWithinMS
-  }
+    return options && options.useCacheOnlyWithinMS;
+  };
 
   const cacheNotDisabled = (options: HelperOptions) => {
-    return !(options && options.disableCache)
-  }
-
+    return !(options && options.disableCache);
+  };
 
   return {
     getClientSubscription: (p: ParamType) => {
@@ -438,6 +435,10 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 }
 
 function cacheDataValid({ options, cachedDateMS }: { options: HelperOptions; cachedDateMS: number }): boolean {
-  let cutoff = Date.now() - options.useCacheOnlyWithinMS;
-  return cachedDateMS > cutoff;
+  if (options) {
+    let cutoff = Date.now() - options.useCacheOnlyWithinMS;
+    return cachedDateMS > cutoff;
+  } else {
+    return false;
+  }
 }
