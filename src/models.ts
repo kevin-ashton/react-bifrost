@@ -28,8 +28,8 @@ export type BifrostInstance<FunctionsType extends Record<string, Function>> = {
 };
 
 export interface UseCacheFns {
-  getCachedFnResult: (p: { key: string }) => Promise<{ cachedDateMS: number; value: any } | void>;
-  setCachedFnResult: (p: { key: string; value: any }) => Promise<void>;
+  getCachedFnResult: (p: { key: string }) => { cachedDateMS: number; value: any } | void;
+  setCachedFnResult: (p: { key: string; value: any }) => void;
 }
 
 export type SubProps<T> = {
@@ -42,7 +42,8 @@ export type SubProps<T> = {
 
 export interface BifrostInstanceFn<ParamType, ResponseType> {
   getClientSubscription: (
-    p: ParamType
+    p: ParamType,
+    options: SubscriptionHelperOptions
   ) => {
     subscribe: (
       fn: (p: { data: UnpackBifrostSubscription<ResponseType>; isFromCache: boolean }) => void
@@ -57,7 +58,7 @@ export interface BifrostInstanceFn<ParamType, ResponseType> {
   useClientSubscription: (
     p: ParamType,
     memoizationArr: any[],
-    options?: HelperOptions
+    options?: SubscriptionHelperOptions
   ) => { isLoading: boolean; error: Error; data: UnpackBifrostSubscription<ResponseType>; isFromCache: boolean };
   useServer: (
     p: ParamType,
@@ -73,4 +74,8 @@ export type Logger = (p: { fnName: string; details: any; error?: Error }) => any
 export interface HelperOptions {
   useCacheOnlyWithinMS?: number;
   disableCache?: boolean; // If set will ignore options
+}
+
+export interface SubscriptionHelperOptions {
+  disableCache?: boolean;
 }
