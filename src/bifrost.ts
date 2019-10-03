@@ -126,7 +126,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
           if (cacheExists && cacheNotDisabled(options)) {
             let c = p1.useCacheFns.getCachedFnResult({ key: cacheKey });
             if (c) {
-              fn(c.value);
+              fn({ data: c.value, isFromCache: true });
             }
           }
 

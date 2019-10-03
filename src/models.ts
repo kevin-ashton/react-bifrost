@@ -53,18 +53,23 @@ export interface BifrostInstanceFn<ParamType, ResponseType> {
     p: ParamType,
     memoizationArr: any[],
     options?: HelperOptions
-  ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
+  ) => { isLoading: boolean; error: Error; data: ResponseType | undefined; isFromCache: boolean };
   fetchClient: (p: ParamType, options?: HelperOptions) => Promise<{ data: ResponseType; isFromCache: boolean }>;
   useClientSubscription: (
     p: ParamType,
     memoizationArr: any[],
     options?: SubscriptionHelperOptions
-  ) => { isLoading: boolean; error: Error; data: UnpackBifrostSubscription<ResponseType>; isFromCache: boolean };
+  ) => {
+    isLoading: boolean;
+    error: Error;
+    data: UnpackBifrostSubscription<ResponseType> | undefined;
+    isFromCache: boolean;
+  };
   useServer: (
     p: ParamType,
     memoizationArr: any[],
     options?: HelperOptions
-  ) => { isLoading: boolean; error: Error; data: ResponseType; isFromCache: boolean };
+  ) => { isLoading: boolean; error: Error; data: ResponseType | undefined; isFromCache: boolean };
   fetchServer: (p: ParamType, options?: HelperOptions) => Promise<{ data: ResponseType; isFromCache: boolean }>;
 }
 
