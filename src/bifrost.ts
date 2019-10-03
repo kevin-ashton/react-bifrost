@@ -93,7 +93,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
 
   const getInitialRefValForUse = (p: {
     cacheKey: string;
-    options: HelperOptions | SubscriptionHelperOptions;
+    options?: HelperOptions | SubscriptionHelperOptions;
   }): { data: any; isLoading: boolean; error: any; isFromCache: any } => {
     if (cacheExists && cacheNotDisabled(p.options)) {
       const cacheData = p1.useCacheFns.getCachedFnResult({ key: p.cacheKey });
@@ -115,7 +115,7 @@ function FnMethodsHelper<ParamType, ResponseType>(p1: {
   };
 
   return {
-    getClientSubscription: (p: ParamType, options: SubscriptionHelperOptions) => {
+    getClientSubscription: (p: ParamType, options?: SubscriptionHelperOptions) => {
       return {
         subscribe: (fn) => {
           let sub = p1.fn(p);
